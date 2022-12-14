@@ -21,7 +21,7 @@ The bot runs as follows:
 - Expose the following metrics:
   - `num_failed_tx`
   - `num_success_tx`
-  - `fee_scucess_tx`
+  - `fee_success_tx`
 - Check orchestrator balance and exit if balance is below threshold.
 
 ### Environment variables
@@ -44,7 +44,10 @@ The bot runs as follows:
 
 ```bash
 npm install
+export CHAIN_ID=evmos_9000-1
+export CHAIN_ID_NUMBER=9000
 export RPC_URL=http://evm-rpc-url:8545
+export API_URL=http://evm-rpc-url:1317
 export ORCH_PRIV_KEY=YOUR_FUNDER_ACCOUNT_PRIV_KEY
 npx ts-node src/index.ts
 ```

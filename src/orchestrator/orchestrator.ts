@@ -7,6 +7,7 @@ import path from 'path';
 import { NonceManager } from '@ethersproject/experimental';
 import { Counter, Gauge } from 'prom-client';
 import { Logger } from '../common/logger';
+import { BankWorker } from '../worker/bank-worker';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -17,6 +18,9 @@ export interface OrchestratorParams {
   waitForTxMine: boolean;
   gasToConsumePerTx: string;
   logger: Logger;
+  chainId : number;
+  cosmosChainId: string;
+  apiUrl : string;
 }
 
 export interface Contracts {
@@ -119,27 +123,49 @@ export class Orchestrator {
 
       // fund account
       await this._fundAccount(workerWallet.address, true);
-
-      // create worker
-      const worker = new GasConsumerWorker({
+      var worker : IWorker;
+      if (i%2==0) {
+        // create worker
+        worker = new GasConsumerWorker({
+          waitForTxToMine: this.params.waitForTxMine,
+          account: {
+            privateKey: workerWallet.privateKey,
+            address: workerWallet.address
+          },
+          provider: this.provider,
+          contractAddress: this.contracts.gasConsumerContract
+            ? this.contracts.gasConsumerContract
+            : await this._deployGasConsumerContract(),
+          gasToConsumePerTX: this.params.gasToConsumePerTx,
+          successfulTxCounter: this.successfulTxCounter,
+          failedTxCounter: this.failedTxCounter,
+          onInsufficientFunds: async () => {
+            this.toFundQueue.push(worker);
+          },
+          successfulTxFeeGauge: this.successfulTxFeeGauge,
+          logger: this.logger,
+        });
+    } else {
+      worker = new BankWorker({
         waitForTxToMine: this.params.waitForTxMine,
         account: {
           privateKey: workerWallet.privateKey,
           address: workerWallet.address
         },
         provider: this.provider,
-        contractAddress: this.contracts.gasConsumerContract
-          ? this.contracts.gasConsumerContract
-          : await this._deployGasConsumerContract(),
-        gasToConsumePerTX: this.params.gasToConsumePerTx,
         successfulTxCounter: this.successfulTxCounter,
         failedTxCounter: this.failedTxCounter,
         onInsufficientFunds: async () => {
           this.toFundQueue.push(worker);
         },
         successfulTxFeeGauge: this.successfulTxFeeGauge,
-        logger: this.logger
+        logger: this.logger,
+        apiUrl: this.params.apiUrl,
+        chainId: this.params.chainId,
+        cosmosChainId: this.params.cosmosChainId,
+        receiverAddress: ''
       });
+    }
 
       // start worker
       worker.run();

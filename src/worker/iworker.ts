@@ -27,18 +27,20 @@ export abstract class IWorker {
   public readonly account: Account;
   private readonly successfulTxCounter: Counter<string>;
   private readonly failedTxCounter: Counter<string>;
-  private readonly successfulTxFeeGauge: Gauge<string>;
+  protected readonly successfulTxFeeGauge: Gauge<string>;
   protected readonly signer: NonceManager;
   protected isLowOnFunds = false;
   private readonly onInsufficientFunds: OnInsufficientFundsCallback;
-  private readonly logger: Logger;
+  protected readonly logger: Logger;
   protected _isStopped = false;
+  protected wallet: Wallet;
 
   constructor(params: IWorkerParams) {
     this.waitForTxToMine = params.waitForTxToMine;
     this.account = params.account;
+    this.wallet = new Wallet(params.account.privateKey, params.provider)
     this.signer = new NonceManager(
-      new Wallet(params.account.privateKey, params.provider)
+      this.wallet
     );
     this.successfulTxCounter = params.successfulTxCounter;
     this.failedTxCounter = params.failedTxCounter;
@@ -52,14 +54,7 @@ export abstract class IWorker {
   async run(): Promise<void> {
     while (!this._isStopped) {
       if (!this.isLowOnFunds) {
-        try {
-          const txResponse = await this.sendTransaction();
-          txResponse.wait().then((txReceipt: providers.TransactionReceipt) => {
-            this.onSuccessfulTx(txReceipt);
-          });
-        } catch (e: unknown) {
-          this.onFailedTx(e);
-        }
+        await this.action()
       } else {
         // delay to prevent loop from running synchronously
         await sleep(1000);
@@ -67,27 +62,17 @@ export abstract class IWorker {
     }
   }
 
-  abstract sendTransaction(): Promise<providers.TransactionResponse>;
+  abstract action() : Promise<void>;
+  abstract sendTransaction(): Promise<any>;
 
   stop() {
     this._isStopped = true;
   }
 
-  async onSuccessfulTx(receipt: providers.TransactionReceipt) {
-    this.logger.debug('new successful tx', {
-      hash: receipt.transactionHash,
-      block: receipt.blockNumber,
-      index: receipt.transactionIndex
-    });
+ async onSuccessfulTx(receipt: any) {
     this.successfulTxCounter.inc({
       worker: this.account.address
     });
-    this.successfulTxFeeGauge.set(
-      {
-        worker: this.account.address
-      },
-      receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
-    );
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,5 +113,6 @@ export abstract class IWorker {
 
   async hasBeenRefunded() {
     this.isLowOnFunds = false;
+    // const broad = await broadcast("qwe")
   }
 }

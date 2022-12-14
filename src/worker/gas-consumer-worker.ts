@@ -37,4 +37,33 @@ export class GasConsumerWorker extends IWorker {
   async sendTransaction(): Promise<providers.TransactionResponse> {
     return this.contract.go(this.params.gasToConsumePerTX);
   }
+
+  async action() : Promise<void> {
+    try {
+      const txResponse = await this.sendTransaction();
+      txResponse.wait().then((txReceipt: any) => {
+        this.onSuccessfulTx(txReceipt);
+      });
+    } catch (e: unknown) {
+      this.onFailedTx(e);
+    }
+    return;
+  }
+
+  async onSuccessfulTx(receipt: any): Promise<void> {
+    this.logger.debug('new successful tx', {
+      hash: receipt.transactionHash,
+      block: receipt.blockNumber,
+      index: receipt.transactionIndex
+    });
+    this.successfulTxFeeGauge.set(
+    {
+      worker: this.account.address
+    },
+    receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
+    );
+      
+    super.onSuccessfulTx(receipt)
+      
+  }
 }

@@ -31,9 +31,12 @@ async function run() {
     fundAllocationPerAccountBASE: config.fundsPerAccount,
     minFundsOrchestrator: config.orchestratorMinFunds,
     rpcUrl: config.rpcUrl,
+    apiUrl: config.apiUrl,
     waitForTxMine: config.waitForTxToMine,
     gasToConsumePerTx: config.gasToConsumePerTx,
-    logger: logger
+    logger: logger,
+    chainId: config.chainId,
+    cosmosChainId: config.cosmosChainId,
   });
 
   await orchestrator.initialize();

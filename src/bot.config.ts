@@ -17,11 +17,18 @@ export interface BotConfig {
   logLevel: LogLevel;
   orchestratorMinFunds: string;
   serverPort: number;
+  cosmosChainId: string;
+  chainId : number;
+  apiUrl : string;
+  
 }
 
 export function getConfig(): BotConfig {
   return {
+    cosmosChainId : stringFromEnvOrDefault('CHAIN_ID', 'evmos_9000-1'),
+    chainId : numberFromEnvOrDefault('CHAIN_ID_NUMBER', 9000),
     rpcUrl: stringFromEnvOrThrow('RPC_URL'),
+    apiUrl: stringFromEnvOrThrow('API_URL'),
     orchestratorAccountPrivateKey: stringFromEnvOrThrow('ORCH_PRIV_KEY'),
     orchestratorMinFunds: stringFromEnvOrDefault(
       'ORCH_MIN_FUNDS_BASE',
