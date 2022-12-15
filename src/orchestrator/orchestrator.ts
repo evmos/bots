@@ -8,6 +8,7 @@ import { NonceManager } from '@ethersproject/experimental';
 import { Counter, Gauge } from 'prom-client';
 import { Logger } from '../common/logger';
 import { BankWorker } from '../worker/bank-worker';
+import { DelegateWorker } from '../worker/delegate-worker';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;

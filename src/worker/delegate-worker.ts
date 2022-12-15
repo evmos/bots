@@ -1,9 +1,9 @@
-import { createMessageSend } from '@evmos/transactions'
+import { createTxMsgDelegate } from '@evmos/transactions'
 import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet'
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
 
 
-export class BankWorker extends EvmosWorker {
+export class DelegateWorker extends EvmosWorker {
   private readonly params: EvmosWorkerParams;
   constructor(params: EvmosWorkerParams) {
     super({
@@ -28,8 +28,8 @@ export class BankWorker extends EvmosWorker {
   }
 
   createMessage(sender: any) : Tx {
-    const txSimple = createMessageSend(this.chainID, sender, LOCALNET_FEE, '', {
-      destinationAddress: 'evmos1pmk2r32ssqwps42y3c9d4clqlca403yd9wymgr',
+    const txSimple = createTxMsgDelegate(this.chainID, sender, LOCALNET_FEE, '', {
+      validatorAddress: 'evmos1pmk2r32ssqwps42y3c9d4clqlca403yd9wymgr',
       amount: '1',
       denom: 'aevmos',
     })

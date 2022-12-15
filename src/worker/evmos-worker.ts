@@ -1,13 +1,37 @@
 import { IWorker, IWorkerParams } from './iworker';
 import { Wallet } from '@ethersproject/wallet'
-import { createMessageSend } from '@evmos/transactions'
 import {
   broadcast,
   getSender,
-  LOCALNET_FEE,
   signTransaction,
 } from '@hanchon/evmos-ts-wallet'
 import { Chain } from '@tharsis/transactions';
+
+export interface Tx {
+    signDirect: {
+        body: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.TxBody;
+        authInfo: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.AuthInfo;
+        signBytes: string;
+    };
+    legacyAmino: {
+        body: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.TxBody;
+        authInfo: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.AuthInfo;
+        signBytes: string;
+    };
+    eipToSign: {
+        types: object;
+        primaryType: string;
+        domain: {
+            name: string;
+            version: string;
+            chainId: number;
+            verifyingContract: string;
+            salt: string;
+        };
+        message: object;
+    };
+  }
+
 
 export interface EvmosWorkerParams extends IWorkerParams {
   receiverAddress: string;
@@ -29,6 +53,7 @@ export abstract class EvmosWorker extends IWorker {
       onInsufficientFunds: params.onInsufficientFunds,
       logger: params.logger,
       successfulTxFeeGauge: params.successfulTxFeeGauge,
+      type : params.type
     });
     this.apiUrl = params.apiUrl;
     this.chainID = { 
@@ -58,30 +83,7 @@ export abstract class EvmosWorker extends IWorker {
     return { sender, txSimple }
   }
 
-  abstract createMessage(sender : any) : {
-    signDirect: {
-        body: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.TxBody;
-        authInfo: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.AuthInfo;
-        signBytes: string;
-    };
-    legacyAmino: {
-        body: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.TxBody;
-        authInfo: import("@evmos/proto/dist/proto/cosmos/tx/v1beta1/tx").cosmos.tx.v1beta1.AuthInfo;
-        signBytes: string;
-    };
-    eipToSign: {
-        types: object;
-        primaryType: string;
-        domain: {
-            name: string;
-            version: string;
-            chainId: number;
-            verifyingContract: string;
-            salt: string;
-        };
-        message: object;
-    };
-  }
+  abstract createMessage(sender : any) : Tx
 
   async action() : Promise<void> {
     try {
