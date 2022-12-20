@@ -56,5 +56,5 @@ npx ts-node src/index.ts
 
 ```bash
 docker build -t tx-bot-dev -f Dockerfile.dev .
-docker run -it --init --rm --network=host -e  CHAIN_ID_NUMBER=9000 CHAIN_ID=evmos_9000-1 API_URL=http://evm-rpc-url:1317 RPC_URL=http://localhost:8545 -e ORCH_PRIV_KEY=YOUR_FUNDER_ACCOUNT_PRIV_KEY tx-bot-dev
+docker run -it --init --rm --network=host -e CHAIN_ID_NUMBER=9000 -e CHAIN_ID=evmos_9000-1 -e API_URL=http://evm-rpc-url:1317 -e RPC_URL=http://localhost:8545 -e ORCH_PRIV_KEY=YOUR_FUNDER_ACCOUNT_PRIV_KEY tx-bot-dev
 ```

@@ -77,7 +77,7 @@ export abstract class EvmosWorker extends IWorker {
   }
 
   async prepareMessage(wallet: Wallet) {
-    const sender = await getSender(wallet)
+    const sender = await getSender(wallet, this.apiUrl)
     const txSimple = this.createMessage(sender)
     return { sender, txSimple }
   }

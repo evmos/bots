@@ -118,6 +118,5 @@ export abstract class IWorker {
 
   async hasBeenRefunded() {
     this.isLowOnFunds = false;
-    // const broad = await broadcast("qwe")
   }
 }
