@@ -53,7 +53,6 @@ export abstract class EvmosWorker extends IWorker {
       onInsufficientFunds: params.onInsufficientFunds,
       logger: params.logger,
       successfulTxFeeGauge: params.successfulTxFeeGauge,
-      type : params.type
     });
     this.apiUrl = params.apiUrl;
     this.chainID = { 
@@ -90,7 +89,6 @@ export abstract class EvmosWorker extends IWorker {
       const txResponse = await this.sendTransaction();
       this.onSuccessfulTx(txResponse)
     } catch (e: unknown) {
-      console.log(e)
       this.onFailedTx(e);
     }
   }

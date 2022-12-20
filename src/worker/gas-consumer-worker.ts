@@ -1,4 +1,5 @@
 import { Contract, providers } from 'ethers';
+import { gasConsumer } from '../common/worker-const';
 import { IWorker, IWorkerParams } from './iworker';
 
 export interface GasConsumerWorkerParams extends IWorkerParams {
@@ -13,7 +14,6 @@ const CONTRACT_INTERFACES = [
 export class GasConsumerWorker extends IWorker {
   private readonly params: GasConsumerWorkerParams;
   private readonly contract: Contract;
-
   constructor(params: GasConsumerWorkerParams) {
     super({
       account: params.account,
@@ -25,7 +25,7 @@ export class GasConsumerWorker extends IWorker {
       logger: params.logger,
       successfulTxFeeGauge: params.successfulTxFeeGauge
     });
-
+    this.type = gasConsumer
     this.params = params;
     this.contract = new Contract(
       params.contractAddress,

@@ -9,6 +9,8 @@ import { Counter, Gauge } from 'prom-client';
 import { Logger } from '../common/logger';
 import { BankWorker } from '../worker/bank-worker';
 import { DelegateWorker } from '../worker/delegate-worker';
+import { bank, delegate, gasConsumer } from '../common/worker-const';
+import { Worker } from 'cluster';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -124,55 +126,57 @@ export class Orchestrator {
 
       // fund account
       await this._fundAccount(workerWallet.address, true);
-      var worker : IWorker;
-      if (i%2==0) {
-        // create worker
-        worker = new GasConsumerWorker({
-          waitForTxToMine: this.params.waitForTxMine,
-          account: {
-            privateKey: workerWallet.privateKey,
-            address: workerWallet.address
-          },
-          provider: this.provider,
-          contractAddress: this.contracts.gasConsumerContract
-            ? this.contracts.gasConsumerContract
-            : await this._deployGasConsumerContract(),
-          gasToConsumePerTX: this.params.gasToConsumePerTx,
-          successfulTxCounter: this.successfulTxCounter,
-          failedTxCounter: this.failedTxCounter,
-          onInsufficientFunds: async () => {
-            this.toFundQueue.push(worker);
-          },
-          successfulTxFeeGauge: this.successfulTxFeeGauge,
-          logger: this.logger,
-        });
-    } else {
-      worker = new BankWorker({
-        waitForTxToMine: this.params.waitForTxMine,
-        account: {
-          privateKey: workerWallet.privateKey,
-          address: workerWallet.address
-        },
-        provider: this.provider,
-        successfulTxCounter: this.successfulTxCounter,
-        failedTxCounter: this.failedTxCounter,
-        onInsufficientFunds: async () => {
-          this.toFundQueue.push(worker);
-        },
-        successfulTxFeeGauge: this.successfulTxFeeGauge,
-        logger: this.logger,
-        apiUrl: this.params.apiUrl,
-        chainId: this.params.chainId,
-        cosmosChainId: this.params.cosmosChainId,
-        receiverAddress: ''
-      });
+      if (i % 2 == 0) {
+          await this.addWorker(gasConsumer, {})
+      } else {
+          await this.addWorker(bank, {})
+      }
+    }
+  }
+
+  async addWorker(type : string, params: any) {
+    const workerWallet = Wallet.createRandom();
+
+    // fund account
+    await this._fundAccount(workerWallet.address, true);
+    let worker : IWorker;
+    let valid = true;
+    switch(type) {
+      case bank:
+        worker = this.createBankWorker(workerWallet, params);
+        break;
+      case delegate:
+        [worker, valid] = this.createDelegateWorker(workerWallet, params);
+        break;
+      case gasConsumer:
+        worker = await this.createGasConsumerWorker(workerWallet, params);
+        break;
+      default:
+        worker = this.createBankWorker(workerWallet, params);
+        break;
     }
 
-      // start worker
-      worker.run();
+    if (!valid){
+      return;
+    }
 
-      // add worker to internal list
-      this.workers.push();
+    // start worker
+    worker.run();
+
+    // add worker to internal list
+    this.workers.push(worker);
+  }
+
+  killWorker(type : string) {
+    console.log("KILL " +  this.workers.length + " " + type)
+    for (let i=0; i < this.workers.length; i++ ){
+      console.log(this.workers[i].type + "  " + type)
+      if (this.workers[i].type == type)
+      {
+        console.log('deleted '+ i )
+        this.workers[i].stop();
+        return;
+      }
     }
   }
 
@@ -193,7 +197,7 @@ export class Orchestrator {
           }
         }
       } else {
-        // sleep to prevent loop from running syncrhonously
+        // sleep to prevent loop from running synchronously
         await sleep(1000);
       }
     }
@@ -261,5 +265,82 @@ export class Orchestrator {
     ) {
       throw new Error('Insufficient funds in orchestrator account');
     }
+  }
+
+  createBankWorker(workerWallet: Wallet, params : any) : IWorker {
+    if (!('receiver' in params)) {
+      params['receiver'] = "evmos1pmk2r32ssqwps42y3c9d4clqlca403yd9wymgr"
+    }
+    const worker =  new BankWorker({
+        waitForTxToMine: this.params.waitForTxMine,
+        account: {
+          privateKey: workerWallet.privateKey,
+          address: workerWallet.address
+        },
+        provider: this.provider,
+        successfulTxCounter: this.successfulTxCounter,
+        failedTxCounter: this.failedTxCounter,
+        onInsufficientFunds: async () => {
+          this.toFundQueue.push(worker);
+        },
+        successfulTxFeeGauge: this.successfulTxFeeGauge,
+        logger: this.logger,
+        apiUrl: this.params.apiUrl,
+        chainId: this.params.chainId,
+        cosmosChainId: this.params.cosmosChainId,
+        receiverAddress:  params['receiver']
+      });
+      return worker
+  } 
+
+  async createGasConsumerWorker(workerWallet : Wallet, _ : any) : Promise<IWorker> {
+    const worker = new GasConsumerWorker({
+      waitForTxToMine: this.params.waitForTxMine,
+      account: {
+        privateKey: workerWallet.privateKey,
+        address: workerWallet.address
+      },
+      provider: this.provider,
+      contractAddress: this.contracts.gasConsumerContract
+        ? this.contracts.gasConsumerContract
+        : await this._deployGasConsumerContract(),
+      gasToConsumePerTX: this.params.gasToConsumePerTx,
+      successfulTxCounter: this.successfulTxCounter,
+      failedTxCounter: this.failedTxCounter,
+      onInsufficientFunds: async () => {
+        this.toFundQueue.push(worker);
+      },
+      successfulTxFeeGauge: this.successfulTxFeeGauge,
+      logger: this.logger,
+    });
+    return worker;
+  }
+
+createDelegateWorker(workerWallet: Wallet, params : any) : [IWorker, boolean] {
+    let valid = true;
+    // cant delegate to a default value, since validators change
+    if (!('validator' in params)){
+      valid = false
+    }
+    const worker =  new DelegateWorker({
+        waitForTxToMine: this.params.waitForTxMine,
+        account: {
+          privateKey: workerWallet.privateKey,
+          address: workerWallet.address
+        },
+        provider: this.provider,
+        successfulTxCounter: this.successfulTxCounter,
+        failedTxCounter: this.failedTxCounter,
+        onInsufficientFunds: async () => {
+          this.toFundQueue.push(worker);
+        },
+        successfulTxFeeGauge: this.successfulTxFeeGauge,
+        logger: this.logger,
+        apiUrl: this.params.apiUrl,
+        chainId: this.params.chainId,
+        cosmosChainId: this.params.cosmosChainId,
+        receiverAddress: params['validator']
+      });
+      return [worker, valid]
   }
 }

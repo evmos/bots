@@ -34,6 +34,7 @@ export abstract class IWorker {
   protected readonly logger: Logger;
   protected _isStopped = false;
   protected wallet: Wallet;
+  public type :string
 
   constructor(params: IWorkerParams) {
     this.waitForTxToMine = params.waitForTxToMine;
@@ -47,11 +48,13 @@ export abstract class IWorker {
     this.successfulTxFeeGauge = params.successfulTxFeeGauge;
     this.onInsufficientFunds = params.onInsufficientFunds;
     this.logger = params.logger.child({
-      workerAddr: params.account.address
+      workerAddr: params.account.address,
     });
+    this.type = "invalid"
   }
 
   async run(): Promise<void> {
+    console.log("Starting worker " + this.type)
     while (!this._isStopped) {
       if (!this.isLowOnFunds) {
         await this.action()
@@ -66,6 +69,7 @@ export abstract class IWorker {
   abstract sendTransaction(): Promise<any>;
 
   stop() {
+    console.log("Stopping worker " + this.type)
     this._isStopped = true;
   }
 
@@ -96,6 +100,7 @@ export abstract class IWorker {
       }
 
       this.logger.error('new failed tx', {
+        type: this.type,
         error: errorString
       });
       this.failedTxCounter.inc({

@@ -19,12 +19,8 @@ async function run() {
     logger.error(err);
     process.exit(1);
   });
-
-  runServer({
-    port: config.serverPort,
-    logger: logger
-  });
-
+  
+  
   const orchestrator = new Orchestrator({
     orchestratorAccountPrivKey: config.orchestratorAccountPrivateKey,
     numberOfWorkers: config.numberOfAccounts,
@@ -39,7 +35,15 @@ async function run() {
     cosmosChainId: config.cosmosChainId,
   });
 
+
+  runServer({
+    port: config.serverPort,
+    logger: logger,
+    orchestrator: orchestrator
+  });
   await orchestrator.initialize();
+
+
 }
 
 run();
