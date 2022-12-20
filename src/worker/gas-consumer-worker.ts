@@ -1,4 +1,5 @@
 import { Contract, providers } from 'ethers';
+import { gasConsumer } from '../common/worker-const';
 import { IWorker, IWorkerParams } from './iworker';
 
 export interface GasConsumerWorkerParams extends IWorkerParams {
@@ -13,7 +14,6 @@ const CONTRACT_INTERFACES = [
 export class GasConsumerWorker extends IWorker {
   private readonly params: GasConsumerWorkerParams;
   private readonly contract: Contract;
-
   constructor(params: GasConsumerWorkerParams) {
     super({
       account: params.account,
@@ -25,7 +25,7 @@ export class GasConsumerWorker extends IWorker {
       logger: params.logger,
       successfulTxFeeGauge: params.successfulTxFeeGauge
     });
-
+    this.type = gasConsumer
     this.params = params;
     this.contract = new Contract(
       params.contractAddress,
@@ -36,5 +36,34 @@ export class GasConsumerWorker extends IWorker {
 
   async sendTransaction(): Promise<providers.TransactionResponse> {
     return this.contract.go(this.params.gasToConsumePerTX);
+  }
+
+  async action() : Promise<void> {
+    try {
+      const txResponse = await this.sendTransaction();
+      txResponse.wait().then((txReceipt: any) => {
+        this.onSuccessfulTx(txReceipt);
+      });
+    } catch (e: unknown) {
+      this.onFailedTx(e);
+    }
+    return;
+  }
+
+  async onSuccessfulTx(receipt: any): Promise<void> {
+    this.logger.debug('new successful tx', {
+      hash: receipt.transactionHash,
+      block: receipt.blockNumber,
+      index: receipt.transactionIndex
+    });
+    this.successfulTxFeeGauge.set(
+    {
+      worker: this.account.address
+    },
+    receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
+    );
+      
+    super.onSuccessfulTx(receipt)
+      
   }
 }

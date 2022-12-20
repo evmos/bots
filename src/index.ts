@@ -19,24 +19,31 @@ async function run() {
     logger.error(err);
     process.exit(1);
   });
-
-  runServer({
-    port: config.serverPort,
-    logger: logger
-  });
-
+  
+  
   const orchestrator = new Orchestrator({
     orchestratorAccountPrivKey: config.orchestratorAccountPrivateKey,
     numberOfWorkers: config.numberOfAccounts,
     fundAllocationPerAccountBASE: config.fundsPerAccount,
     minFundsOrchestrator: config.orchestratorMinFunds,
     rpcUrl: config.rpcUrl,
+    apiUrl: config.apiUrl,
     waitForTxMine: config.waitForTxToMine,
     gasToConsumePerTx: config.gasToConsumePerTx,
-    logger: logger
+    logger: logger,
+    chainId: config.chainId,
+    cosmosChainId: config.cosmosChainId,
   });
 
+
+  runServer({
+    port: config.serverPort,
+    logger: logger,
+    orchestrator: orchestrator
+  });
   await orchestrator.initialize();
+
+
 }
 
 run();
