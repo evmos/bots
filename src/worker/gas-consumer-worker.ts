@@ -39,12 +39,14 @@ export class GasConsumerWorker extends IWorker {
   }
 
   async action() : Promise<void> {
+    let txResponse
     try {
-      const txResponse = await this.sendTransaction();
+      txResponse = await this.sendTransaction();
       txResponse.wait().then((txReceipt: any) => {
         this.onSuccessfulTx(txReceipt);
       });
     } catch (e: unknown) {
+      console.log(e)
       this.onFailedTx(e);
     }
     return;
@@ -62,8 +64,8 @@ export class GasConsumerWorker extends IWorker {
     },
     receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
     );
-      
+
     super.onSuccessfulTx(receipt)
-      
+
   }
 }

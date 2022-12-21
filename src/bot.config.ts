@@ -39,7 +39,7 @@ export function getConfig(): BotConfig {
       'FUNDS_PER_ACCOUNT_BASE',
       '1000000000000000000'
     ),
-    waitForTxToMine: booleanFromEnvOrDefault('WAIT_FOR_TX_MINE', false),
+    waitForTxToMine: booleanFromEnvOrDefault('WAIT_FOR_TX_MINE', true),
     gasToConsumePerTx: stringFromEnvOrDefault('GAS_CONSUME_PER_TX', '100000'),
     logLevel: logLevelFromEnvOrDefault('LOG_LEVEL', 'info'),
     serverPort: numberFromEnvOrDefault('SERVER_PORT', 8080)

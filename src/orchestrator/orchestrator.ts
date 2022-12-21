@@ -11,6 +11,7 @@ import { BankWorker } from '../worker/bank-worker';
 import { DelegateWorker } from '../worker/delegate-worker';
 import { bank, delegate, gasConsumer } from '../common/worker-const';
 import { Worker } from 'cluster';
+import { kill } from 'process';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -108,6 +109,7 @@ export class Orchestrator {
     await this._initializeWorkers();
     this._initializeRefunder();
     this.isInitiliazing = false;
+    console.log("PASSED THAT POINT")
     return this;
   }
 
@@ -188,12 +190,18 @@ export class Orchestrator {
   async _initializeRefunder() {
     this.logger.info('initializing refunder');
     while (!this.isStopped) {
+      console.log("not stopped")
       if (!this.isInitiliazing && this.toFundQueue.length > 0) {
+        console.log("funding")
         while (this.toFundQueue.length > 0) {
+          console.log("fund queue " + this.toFundQueue.length)
           const worker = this.toFundQueue.shift();
           if (worker) {
-            await this._fundAccount(worker.account.address);
-            worker.hasBeenRefunded();
+            console.log("funding " + worker.type)
+            await this.killWorker(worker.type)
+            await this.addWorker(worker.type, {})
+            // await this._fundAccount(worker.account.address, true);
+            // worker.hasBeenRefunded();
           }
         }
       } else {
@@ -238,7 +246,7 @@ export class Orchestrator {
 
     try {
       const contract = await factory.deploy();
-      await contract.deployTransaction.wait();
+      await contract.deployTransaction.wait(1);
       this.logger.info('gas consumer contract deployed', {
         address: contract.address
       });

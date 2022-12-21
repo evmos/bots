@@ -94,6 +94,7 @@ export abstract class IWorker {
           if (errorString.includes('nonce')) {
             errorString = 'INVALID_NONCE';
           }
+          this._isStopped = true;
         } catch (e) {
           errorString = error.code;
         }
@@ -107,8 +108,9 @@ export abstract class IWorker {
         worker: this.account.address,
         reason: errorString
       });
+      await sleep(1000);
       // reset nonce in case it's a nonce issue
-      this.signer.setTransactionCount(await this.signer.getTransactionCount());
+      this.signer.setTransactionCount(await this.signer.getTransactionCount("pending"));
     } catch (err) {
       this.logger.error('error processing failed tx. Code error!', {
         error: error
