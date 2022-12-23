@@ -52,14 +52,21 @@ export abstract class IWorker {
   async run(): Promise<void> {
     while (!this._isStopped) {
       if (!this.isLowOnFunds) {
+        let txResponse;
         try {
-          const txResponse = await this.sendTransaction();
-          txResponse.wait().then((txReceipt: providers.TransactionReceipt) => {
-            this.onSuccessfulTx(txReceipt);
-          });
+          txResponse = await this.sendTransaction();
         } catch (e: unknown) {
           this.onFailedTx(e);
+          continue;
         }
+        txResponse
+          .wait()
+          .then((txReceipt: providers.TransactionReceipt) => {
+            this.onSuccessfulTx(txReceipt);
+          })
+          .catch((err) => {
+            console.log(err);
+          });
       } else {
         // delay to prevent loop from running synchronously
         await sleep(1000);
@@ -73,7 +80,7 @@ export abstract class IWorker {
     this._isStopped = true;
   }
 
-  async onSuccessfulTx(receipt: providers.TransactionReceipt) {
+  onSuccessfulTx(receipt: providers.TransactionReceipt) {
     this.logger.debug('new successful tx', {
       hash: receipt.transactionHash,
       block: receipt.blockNumber,
@@ -86,7 +93,7 @@ export abstract class IWorker {
       {
         worker: this.account.address
       },
-      receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
+      receipt.gasUsed.toNumber()
     );
   }
 
