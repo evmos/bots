@@ -6,7 +6,7 @@ import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
 
 export class DelegateWorker extends EvmosWorker {
   private readonly params: EvmosWorkerParams;
-  constructor(params: EvmosWorkerParams) {
+  constructor(params: EvmosWorkerParams, extra: any) {
     super({
       account: params.account,
       waitForTxToMine: params.waitForTxToMine,
@@ -22,7 +22,8 @@ export class DelegateWorker extends EvmosWorker {
       receiverAddress: params.receiverAddress
     });
     this.params = params;
-    this.type = delegate
+    this.type = delegate;
+    this.extraParams = extra;
   }
 
   async onSuccessfulTx(receipt: any) {

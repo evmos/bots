@@ -42,7 +42,7 @@ export interface EvmosWorkerParams extends IWorkerParams {
 
 export abstract class EvmosWorker extends IWorker {
   protected readonly chainID : Chain;
-  private readonly apiUrl : string;
+  protected readonly apiUrl : string;
   constructor(params: EvmosWorkerParams) {
     super({
       account: params.account,
@@ -65,7 +65,6 @@ export abstract class EvmosWorker extends IWorker {
     const msg = await this.prepareMessage(this.wallet)
     const res = await signTransaction(this.wallet, msg.txSimple)
     return broadcast(res, this.apiUrl);
-
   }
 
   async onSuccessfulTx(receipt: any) {

@@ -6,7 +6,7 @@ import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
 
 export class BankWorker extends EvmosWorker {
   private readonly params: EvmosWorkerParams;
-  constructor(params: EvmosWorkerParams) {
+  constructor(params: EvmosWorkerParams, extra: any) {
     super({
       account: params.account,
       waitForTxToMine: params.waitForTxToMine,
@@ -23,6 +23,7 @@ export class BankWorker extends EvmosWorker {
     });
     this.params = params;
     this.type = bank
+    this.extraParams = extra
   }
 
   async onSuccessfulTx(receipt: any) {

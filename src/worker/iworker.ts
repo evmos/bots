@@ -34,7 +34,8 @@ export abstract class IWorker {
   protected readonly logger: Logger;
   protected _isStopped = false;
   protected wallet: Wallet;
-  public type :string
+  public type :string;
+  public extraParams : any;
 
   constructor(params: IWorkerParams) {
     this.waitForTxToMine = params.waitForTxToMine;

@@ -9,9 +9,11 @@ import { Counter, Gauge } from 'prom-client';
 import { Logger } from '../common/logger';
 import { BankWorker } from '../worker/bank-worker';
 import { DelegateWorker } from '../worker/delegate-worker';
-import { bank, delegate, gasConsumer } from '../common/worker-const';
+import {  ConvertERC20Worker } from '../worker/convertErc20-worker';
+import { bank, converter, delegate, gasConsumer } from '../common/worker-const';
 import { Worker } from 'cluster';
 import { kill } from 'process';
+import { exec } from 'child_process';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -29,7 +31,10 @@ export interface OrchestratorParams {
 
 export interface Contracts {
   gasConsumerContract?: string;
+  erc20Contract?: string;
 }
+
+
 
 export class Orchestrator {
   private readonly params: OrchestratorParams;
@@ -109,7 +114,6 @@ export class Orchestrator {
     await this._initializeWorkers();
     this._initializeRefunder();
     this.isInitiliazing = false;
-    console.log("PASSED THAT POINT")
     return this;
   }
 
@@ -123,16 +127,7 @@ export class Orchestrator {
   async _initializeWorkers() {
     this.logger.info('initializing workers');
     for (let i = 0; i < this.params.numberOfWorkers; i++) {
-      // create account
-      const workerWallet = Wallet.createRandom();
-
-      // fund account
-      await this._fundAccount(workerWallet.address, true);
-      if (i % 2 == 0) {
-          await this.addWorker(gasConsumer, {})
-      } else {
-          await this.addWorker(bank, {})
-      }
+      await this.addWorker(gasConsumer, {})
     }
   }
 
@@ -153,6 +148,9 @@ export class Orchestrator {
       case gasConsumer:
         worker = await this.createGasConsumerWorker(workerWallet, params);
         break;
+      case converter:
+        worker = await this.createErc20ConverterWorker(workerWallet, params);
+        break;
       default:
         worker = this.createBankWorker(workerWallet, params);
         break;
@@ -170,12 +168,9 @@ export class Orchestrator {
   }
 
   killWorker(type : string) {
-    console.log("KILL " +  this.workers.length + " " + type)
     for (let i=0; i < this.workers.length; i++ ){
-      console.log(this.workers[i].type + "  " + type)
       if (this.workers[i].type == type)
       {
-        console.log('deleted '+ i )
         this.workers[i].stop();
         return;
       }
@@ -185,23 +180,19 @@ export class Orchestrator {
   async _initializeContracts() {
     this.logger.info('initializing contracts');
     await this._deployGasConsumerContract();
+    await this._deployERC20();
+    this.contracts.erc20Contract =  "0xafc2751f9aEcA24816C0027F69C64d12A457F6B9";
   }
 
   async _initializeRefunder() {
     this.logger.info('initializing refunder');
     while (!this.isStopped) {
-      console.log("not stopped")
       if (!this.isInitiliazing && this.toFundQueue.length > 0) {
-        console.log("funding")
         while (this.toFundQueue.length > 0) {
-          console.log("fund queue " + this.toFundQueue.length)
           const worker = this.toFundQueue.shift();
           if (worker) {
-            console.log("funding " + worker.type)
-            await this.killWorker(worker.type)
-            await this.addWorker(worker.type, {})
-            // await this._fundAccount(worker.account.address, true);
-            // worker.hasBeenRefunded();
+            await this._fundAccount(worker.account.address, true);
+            worker.hasBeenRefunded();
           }
         }
       } else {
@@ -230,6 +221,38 @@ export class Orchestrator {
       this.logger.error('error funding address ', address);
       return false;
     }
+  }
+
+
+
+  async _deployERC20(): Promise<string> {
+    const metadata = JSON.parse(
+      fs
+        .readFileSync(path.join(process.cwd(), './contracts/ERC20MinterBurnerDecimals.json'))
+        .toString()
+    );
+    const factory = new ContractFactory(
+      metadata.abi,
+      metadata.bytecode,
+      this.signer
+    );
+
+    try {
+      const contract = await factory.deploy("test","test", 18);
+      await contract.deployTransaction.wait(1);
+      this.logger.info('erc20 contract deployed', {
+        address: contract.address
+      });
+      this.contracts.erc20Contract = contract.address;
+      return contract.address;
+    } catch (e) {
+      this.logger.error('error deploying contract. Exiting!', {
+        error: e
+      });
+      throw e;
+    }
+
+
   }
 
   async _deployGasConsumerContract(): Promise<string> {
@@ -297,7 +320,7 @@ export class Orchestrator {
         chainId: this.params.chainId,
         cosmosChainId: this.params.cosmosChainId,
         receiverAddress:  params['receiver']
-      });
+      }, params);
       return worker
   } 
 
@@ -348,7 +371,34 @@ createDelegateWorker(workerWallet: Wallet, params : any) : [IWorker, boolean] {
         chainId: this.params.chainId,
         cosmosChainId: this.params.cosmosChainId,
         receiverAddress: params['validator']
-      });
+      }, params);
       return [worker, valid]
+  }
+
+  async createErc20ConverterWorker(workerWallet : Wallet, extraParams : any) : Promise<IWorker> {
+    const worker = new ConvertERC20Worker({
+      waitForTxToMine: this.params.waitForTxMine,
+      account: {
+        privateKey: workerWallet.privateKey,
+        address: workerWallet.address
+      },
+      provider: this.provider,
+      contractAddress: this.contracts.erc20Contract
+        ? this.contracts.erc20Contract
+        : await this._deployERC20(),
+      successfulTxCounter: this.successfulTxCounter,
+      failedTxCounter: this.failedTxCounter,
+      onInsufficientFunds: async () => {
+        this.toFundQueue.push(worker);
+      },
+      successfulTxFeeGauge: this.successfulTxFeeGauge,
+      logger: this.logger,
+      apiUrl: this.params.apiUrl,
+      chainId: this.params.chainId,
+      cosmosChainId: this.params.cosmosChainId,
+      receiverAddress: "",
+      deployer: this.signer
+    }, extraParams);
+    return worker;
   }
 }
