@@ -17,7 +17,6 @@ export class GasConsumerWorker extends IWorker {
   constructor(params: GasConsumerWorkerParams) {
     super({
       account: params.account,
-      waitForTxToMine: params.waitForTxToMine,
       provider: params.provider,
       successfulTxCounter: params.successfulTxCounter,
       failedTxCounter: params.failedTxCounter,
