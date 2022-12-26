@@ -3,6 +3,8 @@ import { Counter, Gauge } from 'prom-client';
 import { NonceManager } from '@ethersproject/experimental';
 import { Logger } from '../common/logger';
 import { sleep } from '../common/tx';
+import { Logger as etherLogger } from 'ethers/lib/utils';
+import { useTryAsync } from 'no-try';
 
 export interface Account {
   privateKey: string;
@@ -10,7 +12,6 @@ export interface Account {
 }
 
 export interface IWorkerParams {
-  waitForTxToMine: boolean;
   account: Account;
   provider: providers.Provider;
   successfulTxCounter: Counter<string>;
@@ -20,22 +21,20 @@ export interface IWorkerParams {
   logger: Logger;
 }
 
-type OnInsufficientFundsCallback = () => Promise<void>;
+type OnInsufficientFundsCallback = () => void;
 
 export abstract class IWorker {
-  private readonly waitForTxToMine: boolean;
   public readonly account: Account;
   private readonly successfulTxCounter: Counter<string>;
   private readonly failedTxCounter: Counter<string>;
   private readonly successfulTxFeeGauge: Gauge<string>;
   protected readonly signer: NonceManager;
-  protected isLowOnFunds = false;
   private readonly onInsufficientFunds: OnInsufficientFundsCallback;
   private readonly logger: Logger;
+  protected _isLowOnFunds = false;
   protected _isStopped = false;
 
   constructor(params: IWorkerParams) {
-    this.waitForTxToMine = params.waitForTxToMine;
     this.account = params.account;
     this.signer = new NonceManager(
       new Wallet(params.account.privateKey, params.provider)
@@ -49,36 +48,7 @@ export abstract class IWorker {
     });
   }
 
-  async run(): Promise<void> {
-    while (!this._isStopped) {
-      if (!this.isLowOnFunds) {
-        let txResponse;
-        try {
-          txResponse = await this.sendTransaction();
-        } catch (e: unknown) {
-          this.onFailedTx(e);
-          continue;
-        }
-        txResponse
-          .wait()
-          .then((txReceipt: providers.TransactionReceipt) => {
-            this.onSuccessfulTx(txReceipt);
-          })
-          .catch((err) => {
-            console.log(err);
-          });
-      } else {
-        // delay to prevent loop from running synchronously
-        await sleep(1000);
-      }
-    }
-  }
-
   abstract sendTransaction(): Promise<providers.TransactionResponse>;
-
-  stop() {
-    this._isStopped = true;
-  }
 
   onSuccessfulTx(receipt: providers.TransactionReceipt) {
     this.logger.debug('new successful tx', {
@@ -97,43 +67,88 @@ export abstract class IWorker {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async onFailedTx(error: any) {
-    try {
-      let errorString = error.code;
+  hasBeenRefunded() {
+    this._isLowOnFunds = false;
+  }
 
-      if (error.code == 'INSUFFICIENT_FUNDS') {
-        this.logger.warn(`insufficient funds. need refunding`);
-        this.isLowOnFunds = true;
-        await this.onInsufficientFunds();
-      } else if (error.code == 'SERVER_ERROR') {
-        try {
-          errorString = JSON.parse(error.body)['error']['message'];
-          if (errorString.includes('nonce')) {
-            errorString = 'INVALID_NONCE';
-          }
-        } catch (e) {
-          errorString = error.code;
+  stop() {
+    this._isStopped = true;
+  }
+
+  async run(): Promise<void> {
+    while (!this._isStopped) {
+      if (!this._isLowOnFunds) {
+        const [err, txResponse] = await useTryAsync(() =>
+          this.sendTransaction()
+        );
+        if (err) {
+          this.onFailedTx(err);
+          continue
         }
+        // not awaiting here because we want to handle succesful TX async
+        txResponse
+          .wait()
+          .then((txReceipt: providers.TransactionReceipt) => {
+            this.onSuccessfulTx(txReceipt);
+          })
+          .catch((err) => {
+            this.logger.error(err);
+          });
+      } else {
+        // delay to prevent loop from running synchronously
+        await sleep(1000);
       }
-
-      this.logger.error('new failed tx', {
-        error: errorString
-      });
-      this.failedTxCounter.inc({
-        worker: this.account.address,
-        reason: errorString
-      });
-      // reset nonce in case it's a nonce issue
-      this.signer.setTransactionCount(await this.signer.getTransactionCount());
-    } catch (err) {
-      this.logger.error('error processing failed tx. Code error!', {
-        error: error
-      });
     }
   }
 
-  async hasBeenRefunded() {
-    this.isLowOnFunds = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async onFailedTx(error: any) {
+    // handle recovery for every case
+    switch (error.code) {
+      case etherLogger.errors.INSUFFICIENT_FUNDS:
+        this.logger.warn('insufficient funds. need refunding');
+        this._isLowOnFunds = true;
+        this.onInsufficientFunds();
+        break;
+      case etherLogger.errors.NONCE_EXPIRED:
+        this.logger.error(etherLogger.errors.NONCE_EXPIRED);
+        this.refreshSignerNonce('latest');
+        break;
+      case etherLogger.errors.SERVER_ERROR:
+        const errorMessage = JSON.parse(error.body)['error']['message'];
+        this.logger.error(etherLogger.errors.SERVER_ERROR, {
+          error: errorMessage
+        });
+        // for some reason our nonce expired cases are not being categorized
+        // by ethers library as so
+        if (errorMessage.includes('nonce')) {
+          this.refreshSignerNonce('latest');
+        } else if (errorMessage.includes('tx already in mempool')) {
+          this.refreshSignerNonce('pending');
+        }
+        break;
+      default:
+        this.logger.error(`code: ${error.code}`, {
+          error
+        });
+        break;
+    }
+    this.failedTxCounter.inc({
+      worker: this.account.address,
+      reason: error.code
+    });
+  }
+
+  async refreshSignerNonce(blockTag: 'latest' | 'pending') {
+    const [err, txCount] = await useTryAsync(() =>
+      this.signer.getTransactionCount(blockTag)
+    );
+    if (err) {
+      this.logger.error('failed to get account nonce', {
+        error: err
+      });
+    } else {
+      this.signer.setTransactionCount(txCount);
+    }
   }
 }

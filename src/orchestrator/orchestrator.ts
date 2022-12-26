@@ -122,7 +122,6 @@ export class Orchestrator {
 
       // create worker
       const worker = new GasConsumerWorker({
-        waitForTxToMine: this.params.waitForTxMine,
         account: {
           privateKey: workerWallet.privateKey,
           address: workerWallet.address
@@ -134,7 +133,7 @@ export class Orchestrator {
         gasToConsumePerTX: this.params.gasToConsumePerTx,
         successfulTxCounter: this.successfulTxCounter,
         failedTxCounter: this.failedTxCounter,
-        onInsufficientFunds: async () => {
+        onInsufficientFunds:() => {
           this.toFundQueue.push(worker);
         },
         successfulTxFeeGauge: this.successfulTxFeeGauge,
