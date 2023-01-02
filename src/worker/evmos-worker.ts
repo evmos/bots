@@ -46,7 +46,6 @@ export abstract class EvmosWorker extends IWorker {
   constructor(params: EvmosWorkerParams) {
     super({
       account: params.account,
-      waitForTxToMine: params.waitForTxToMine,
       provider: params.provider,
       successfulTxCounter: params.successfulTxCounter,
       failedTxCounter: params.failedTxCounter,

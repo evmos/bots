@@ -22,7 +22,6 @@ export class ConvertERC20Worker extends EvmosWorker {
   constructor(params: ERC20ConverterWorkerParams, extra: any) {
     super({
       account: params.account,
-      waitForTxToMine: params.waitForTxToMine,
       provider: params.provider,
       successfulTxCounter: params.successfulTxCounter,
       failedTxCounter: params.failedTxCounter,

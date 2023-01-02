@@ -1,4 +1,5 @@
 import { BigNumber, providers, utils } from 'ethers';
+import { numberFromEnvOrDefault } from '../common/utils';
 import { ethSender } from '../common/worker-const';
 import { IWorker, IWorkerParams } from './iworker';
 
@@ -9,10 +10,11 @@ export interface EthSenderWorkerParams extends IWorkerParams {
 export class EthSenderWorker extends IWorker {
   private readonly params: EthSenderWorkerParams;
   private readonly receiverAddress: string;
+  private nonce: number;
+  private gasPrice : BigNumber;
   constructor(params: EthSenderWorkerParams) {
     super({
       account: params.account,
-      waitForTxToMine: params.waitForTxToMine,
       provider: params.provider,
       successfulTxCounter: params.successfulTxCounter,
       failedTxCounter: params.failedTxCounter,
@@ -23,32 +25,26 @@ export class EthSenderWorker extends IWorker {
     this.type = ethSender
     this.params = params;
     this.receiverAddress = params.receiverAddress
+
+    this.nonce = -1;
+    this.gasPrice = BigNumber.from("100")
   }
 
   async sendTransaction(): Promise<providers.TransactionResponse> {
+    if (this.nonce == -1) {
+      this.nonce = await this.wallet.getTransactionCount("latest")
+    }
+
     const tx = {
       from: this.wallet.address,
       to: this.receiverAddress,
       value: BigNumber.from("1"),
-      nonce: this.wallet.getTransactionCount("pending"),
-      gasLimit: "0x100000",
-      gasPrice: this.wallet.getGasPrice(),
+      nonce: this.nonce,
+      gasLimit: "0x21000",
+      gasPrice:this.gasPrice,
     }
+    this.nonce = this.nonce + 1;
     return this.wallet.sendTransaction(tx)
-  }
-
-  async action() : Promise<void> {
-    let txResponse
-    try {
-      txResponse = await this.sendTransaction();
-      txResponse.wait().then((txReceipt: any) => {
-        this.onSuccessfulTx(txReceipt);
-      });
-    } catch (e: unknown) {
-      console.log(e)
-      this.onFailedTx(e);
-    }
-    return;
   }
 
   async onSuccessfulTx(receipt: any): Promise<void> {
@@ -65,4 +61,16 @@ export class EthSenderWorker extends IWorker {
     );
     super.onSuccessfulTx(receipt)
   }
+
+  async onFailedTx(error: any) {
+
+    super.onFailedTx(error)
+    const errorMessage = JSON.parse(error.body)['error']['message'];
+    if (errorMessage.includes('nonce')) {
+      this.nonce = await this.wallet.getTransactionCount("latest")
+    } else if (errorMessage.includes('insufficient fee')) {
+      this.gasPrice = await this.wallet.getGasPrice()
+    }
+  }
+
 }

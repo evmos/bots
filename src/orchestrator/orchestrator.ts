@@ -307,7 +307,6 @@ export class Orchestrator {
       params['receiver'] = "evmos1pmk2r32ssqwps42y3c9d4clqlca403yd9wymgr"
     }
     const worker =  new BankWorker({
-        waitForTxToMine: this.params.waitForTxMine,
         account: {
           privateKey: workerWallet.privateKey,
           address: workerWallet.address
@@ -333,7 +332,6 @@ export class Orchestrator {
       params['receiver'] = "0x0Eeca1c550801c1855448E0adAE3e0FE3b57c48D"
     }
     const worker =  new EthSenderWorker({
-        waitForTxToMine: this.params.waitForTxMine,
         account: {
           privateKey: workerWallet.privateKey,
           address: workerWallet.address
@@ -353,7 +351,6 @@ export class Orchestrator {
 
   async createGasConsumerWorker(workerWallet : Wallet, _ : any) : Promise<IWorker> {
     const worker = new GasConsumerWorker({
-      waitForTxToMine: this.params.waitForTxMine,
       account: {
         privateKey: workerWallet.privateKey,
         address: workerWallet.address
@@ -381,7 +378,6 @@ createDelegateWorker(workerWallet: Wallet, params : any) : [IWorker, boolean] {
       valid = false
     }
     const worker =  new DelegateWorker({
-        waitForTxToMine: this.params.waitForTxMine,
         account: {
           privateKey: workerWallet.privateKey,
           address: workerWallet.address
@@ -404,7 +400,6 @@ createDelegateWorker(workerWallet: Wallet, params : any) : [IWorker, boolean] {
 
   async createErc20ConverterWorker(workerWallet : Wallet, extraParams : any) : Promise<IWorker> {
     const worker = new ConvertERC20Worker({
-      waitForTxToMine: this.params.waitForTxMine,
       account: {
         privateKey: workerWallet.privateKey,
         address: workerWallet.address

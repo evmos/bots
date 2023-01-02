@@ -17,7 +17,6 @@ export class GasConsumerWorker extends IWorker {
   constructor(params: GasConsumerWorkerParams) {
     super({
       account: params.account,
-      waitForTxToMine: params.waitForTxToMine,
       provider: params.provider,
       successfulTxCounter: params.successfulTxCounter,
       failedTxCounter: params.failedTxCounter,
@@ -38,20 +37,6 @@ export class GasConsumerWorker extends IWorker {
     return this.contract.go(this.params.gasToConsumePerTX);
   }
 
-  async action() : Promise<void> {
-    let txResponse
-    try {
-      txResponse = await this.sendTransaction();
-      txResponse.wait().then((txReceipt: any) => {
-        this.onSuccessfulTx(txReceipt);
-      });
-    } catch (e: unknown) {
-      console.log(e)
-      this.onFailedTx(e);
-    }
-    return;
-  }
-
   async onSuccessfulTx(receipt: any): Promise<void> {
     this.logger.debug('new successful tx', {
       hash: receipt.transactionHash,
@@ -64,8 +49,6 @@ export class GasConsumerWorker extends IWorker {
     },
     receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
     );
-
     super.onSuccessfulTx(receipt)
-
   }
 }
