@@ -9,8 +9,9 @@ import { Counter, Gauge } from 'prom-client';
 import { Logger } from '../common/logger';
 import { BankWorker } from '../worker/bank-worker';
 import { DelegateWorker } from '../worker/delegate-worker';
-import {  ConvertERC20Worker } from '../worker/convertErc20-worker';
-import { bank, converter, delegate, gasConsumer } from '../common/worker-const';
+import { ConvertERC20Worker } from '../worker/convertErc20-worker';
+import { EthSenderWorker } from '../worker/eth-sender-worker';
+import { bank, converter, delegate, ethSender, gasConsumer } from '../common/worker-const';
 import { Worker } from 'cluster';
 import { kill } from 'process';
 import { exec } from 'child_process';
@@ -127,7 +128,7 @@ export class Orchestrator {
   async _initializeWorkers() {
     this.logger.info('initializing workers');
     for (let i = 0; i < this.params.numberOfWorkers; i++) {
-      await this.addWorker(gasConsumer, {})
+      await this.addWorker(ethSender, {})
     }
   }
 
@@ -150,6 +151,9 @@ export class Orchestrator {
         break;
       case converter:
         worker = await this.createErc20ConverterWorker(workerWallet, params);
+        break;
+      case ethSender:
+        worker = this.createEthSenderWorker(workerWallet, params);
         break;
       default:
         worker = this.createBankWorker(workerWallet, params);
@@ -322,7 +326,30 @@ export class Orchestrator {
         receiverAddress:  params['receiver']
       }, params);
       return worker
-  } 
+  }
+
+  createEthSenderWorker(workerWallet: Wallet, params : any) : IWorker {
+    if (!('receiver' in params)) {
+      params['receiver'] = "0x0Eeca1c550801c1855448E0adAE3e0FE3b57c48D"
+    }
+    const worker =  new EthSenderWorker({
+        waitForTxToMine: this.params.waitForTxMine,
+        account: {
+          privateKey: workerWallet.privateKey,
+          address: workerWallet.address
+        },
+        provider: this.provider,
+        successfulTxCounter: this.successfulTxCounter,
+        failedTxCounter: this.failedTxCounter,
+        onInsufficientFunds: async () => {
+          this.toFundQueue.push(worker);
+        },
+        successfulTxFeeGauge: this.successfulTxFeeGauge,
+        logger: this.logger,
+        receiverAddress:  params['receiver']
+      });
+      return worker
+  }
 
   async createGasConsumerWorker(workerWallet : Wallet, _ : any) : Promise<IWorker> {
     const worker = new GasConsumerWorker({
