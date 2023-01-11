@@ -7,6 +7,7 @@ COPY tsconfig.json tsconfig.json
 RUN npm install
 
 COPY src/ ./src/
+
 RUN npm run build
 
 RUN /bin/bash -c find . ! -name dist ! -name node_modules -maxdepth 1 -mindepth 1 -exec rm -rf {} \\;

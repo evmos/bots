@@ -97,6 +97,9 @@ export abstract class IWorker {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async onFailedTx(error: any) {
+    if (error == undefined) {
+      error = {code : -1}
+    }
     // handle recovery for every case
     switch (error.code) {
       case etherLogger.errors.INSUFFICIENT_FUNDS:

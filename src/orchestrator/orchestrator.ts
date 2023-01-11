@@ -12,9 +12,16 @@ import { DelegateWorker } from '../worker/delegate-worker';
 import { ConvertERC20Worker } from '../worker/convertErc20-worker';
 import { EthSenderWorker } from '../worker/eth-sender-worker';
 import { bank, converter, delegate, ethSender, gasConsumer } from '../common/worker-const';
-import { Worker } from 'cluster';
-import { kill } from 'process';
-import { exec } from 'child_process';
+import {  REGISTER_ERC20_TYPES } from '@evmos/eip712'
+import { createMsgRegisterERC20Proposal } from '@evmos/proto'
+import { createTxMsgSubmitProposal, MessageMsgSubmitProposal } from '@evmos/transactions'
+import {
+  broadcast,
+  getSender,
+  signTransaction,
+  LOCALNET_FEE
+} from '@hanchon/evmos-ts-wallet'
+import { Chain, createTxMsgVote, MessageMsgVote } from '@evmos/transactions';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -35,19 +42,19 @@ export interface Contracts {
   erc20Contract?: string;
 }
 
-
-
 export class Orchestrator {
   private readonly params: OrchestratorParams;
   private workers: IWorker[] = [];
   private provider: providers.Provider;
   private readonly signer: NonceManager;
+  private wallet : Wallet
   private checkBalanceInterval?: NodeJS.Timer;
   private readonly contracts: Contracts = {};
   private isInitiliazing = true;
   private toFundQueue: IWorker[] = [];
   private isStopped = false;
   private readonly logger: Logger;
+  
   private readonly successfulTxCounter = new Counter({
     name: 'num_success_tx',
     help: 'counter for number of successful txs',
@@ -67,14 +74,16 @@ export class Orchestrator {
   constructor(params: OrchestratorParams) {
     this.params = params;
     this.provider = new providers.JsonRpcProvider(params.rpcUrl);
+    this.wallet =  new Wallet(params.orchestratorAccountPrivKey, this.provider)
     this.signer = new NonceManager(
-      new Wallet(params.orchestratorAccountPrivKey, this.provider)
+     this.wallet
     );
     this.logger = params.logger;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async onFailedTx(error: any) {
+    this.signer.setTransactionCount(await this.signer.getTransactionCount());
     try {
       let errorString = error.code;
 
@@ -127,8 +136,8 @@ export class Orchestrator {
 
   async _initializeWorkers() {
     this.logger.info('initializing workers');
-    for (let i = 0; i < this.params.numberOfWorkers; i++) {
-      await this.addWorker(ethSender, {})
+    for (let i = 0; i < 50; i++) {
+      await this.addWorker(converter, {})
     }
   }
 
@@ -185,7 +194,6 @@ export class Orchestrator {
     this.logger.info('initializing contracts');
     await this._deployGasConsumerContract();
     await this._deployERC20();
-    this.contracts.erc20Contract =  "0xafc2751f9aEcA24816C0027F69C64d12A457F6B9";
   }
 
   async _initializeRefunder() {
@@ -248,6 +256,8 @@ export class Orchestrator {
         address: contract.address
       });
       this.contracts.erc20Contract = contract.address;
+
+      await this.registerPair(contract.address)
       return contract.address;
     } catch (e) {
       this.logger.error('error deploying contract. Exiting!', {
@@ -255,8 +265,53 @@ export class Orchestrator {
       });
       throw e;
     }
+  }
 
+  async registerPair(erc20Contract : string): Promise<boolean> {
+    const registerErc20 = createMsgRegisterERC20Proposal(
+      "Register test",
+      'Register test',
+      [erc20Contract],
+    )
 
+    let sender = await getSender(this.wallet, this.params.apiUrl)
+    const proposal : MessageMsgSubmitProposal = {
+      content : registerErc20,
+      initialDepositDenom: "aevmos",
+      initialDepositAmount: "20000000000000000",
+      proposer: sender.accountAddress,
+      extraEip: REGISTER_ERC20_TYPES,
+    }
+    const chain = {
+      chainId:this.params.chainId, 
+      cosmosChainId: this.params.cosmosChainId
+    }
+    let fee = LOCALNET_FEE;
+    fee.gas = "2000000"
+    fee.amount = "2000"
+    const sendProposal = createTxMsgSubmitProposal(chain, sender, fee, '', proposal);
+    const signed = await signTransaction(this.wallet, sendProposal)
+    let res = await broadcast(signed, this.params.apiUrl);
+    this.signer.setTransactionCount(await this.signer.getTransactionCount());
+
+    sender = await getSender(this.wallet, this.params.apiUrl)
+    let pos = res.tx_response.raw_log.indexOf('proposal_id')
+    let endPos = res.tx_response.raw_log.indexOf('"}', pos)
+    let proposal_id : number = res.tx_response.raw_log.substring(pos+22, endPos)
+    const vote : MessageMsgVote = {
+      proposalId : proposal_id,
+      option : 1
+    }
+
+    const voteProposal = createTxMsgVote(chain, sender, fee, '', vote);
+    const signedVote = await signTransaction(this.wallet, voteProposal)
+    await broadcast(signedVote, this.params.apiUrl);
+    this.signer.setTransactionCount(await this.signer.getTransactionCount());
+    
+    console.log("Sleeping for proposal to pass")
+    await sleep(60000);
+    console.log("Awaken")
+    return true
   }
 
   async _deployGasConsumerContract(): Promise<string> {

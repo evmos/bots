@@ -5,7 +5,9 @@ import {
   getSender,
   signTransaction,
 } from '@hanchon/evmos-ts-wallet'
-import { Chain } from '@tharsis/transactions';
+import { Chain } from '@evmos/transactions';
+import { useTryAsync } from 'no-try';
+import { sleep } from '../common/tx';
 
 export interface Tx {
     signDirect: {
@@ -43,6 +45,7 @@ export interface EvmosWorkerParams extends IWorkerParams {
 export abstract class EvmosWorker extends IWorker {
   protected readonly chainID : Chain;
   protected readonly apiUrl : string;
+  protected sequence : number;
   constructor(params: EvmosWorkerParams) {
     super({
       account: params.account,
@@ -58,11 +61,14 @@ export abstract class EvmosWorker extends IWorker {
       chainId: params.chainId,
       cosmosChainId: params.cosmosChainId,
     }
+
+    this.sequence = 0
+
   }
 
   async sendTransaction(): Promise<any> {
-    const msg = await this.prepareMessage(this.wallet)
-    const res = await signTransaction(this.wallet, msg.txSimple)
+    const txSimple = await this.prepareMessage()
+    const res = await signTransaction(this.wallet, txSimple)
     return broadcast(res, this.apiUrl);
   }
 
@@ -74,10 +80,12 @@ export abstract class EvmosWorker extends IWorker {
     });
   }
 
-  async prepareMessage(wallet: Wallet) {
-    const sender = await getSender(wallet, this.apiUrl)
+  async prepareMessage() {
+    let sender = await getSender(this.wallet, this.apiUrl)
+    sender.sequence = this.sequence
     const txSimple = this.createMessage(sender)
-    return { sender, txSimple }
+    this.sequence = this.sequence + 1;
+    return txSimple 
   }
 
   abstract createMessage(sender : any) : Tx
@@ -85,9 +93,46 @@ export abstract class EvmosWorker extends IWorker {
   async action() : Promise<void> {
     try {
       const txResponse = await this.sendTransaction();
-      this.onSuccessfulTx(txResponse)
+          if (txResponse.tx_response != undefined && txResponse.tx_response.code == 0)
+          {
+            this.onSuccessfulTx(txResponse)
+          }
+          else if (txResponse.tx_response != undefined && txResponse.tx_response.code != 0)
+          {
+            this.onFailedTx(txResponse.tx_response);
+          }
+          else 
+          {  
+            let sender = await getSender(this.wallet, this.apiUrl)
+            this.sequence = sender.sequence
+            this.onFailedTx({code: txResponse.code, raw_log: txResponse.message});
+          }
     } catch (e: unknown) {
+      console.log("Catched error")
+      console.log(e)
       this.onFailedTx(e);
+    }
+  }
+
+  async onFailedTx(error: any) {
+    super.onFailedTx({code : error.code, message: error.raw_log})
+    if (error.raw_log.includes('account sequence mismatch'))
+    {
+      let endPos = error.raw_log.indexOf(',', 36)
+      let expectedSequence : string = error.raw_log.substring(36, endPos)
+      this.sequence = parseInt(expectedSequence);
+    }
+  }
+
+
+  async run(): Promise<void> {
+    while (!this._isStopped) {
+      if (!this._isLowOnFunds) {
+        await this.action()
+      } else {
+        // delay to prevent loop from running synchronously
+        await sleep(1000);
+      }
     }
   }
 }

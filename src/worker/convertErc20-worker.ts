@@ -4,6 +4,7 @@ import { converter } from '../common/worker-const';
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
 import { Contract } from 'ethers';
 import { NonceManager } from '@ethersproject/experimental';
+import { sleep } from '../common/tx';
 
 export interface ERC20ConverterWorkerParams extends EvmosWorkerParams {
   contractAddress: string;
@@ -19,6 +20,8 @@ export class ConvertERC20Worker extends EvmosWorker {
   private readonly params: ERC20ConverterWorkerParams;
   private readonly contract: Contract;
   private readonly deployer : NonceManager;
+  private amount : number;
+  private ready : boolean;
   constructor(params: ERC20ConverterWorkerParams, extra: any) {
     super({
       account: params.account,
@@ -43,13 +46,22 @@ export class ConvertERC20Worker extends EvmosWorker {
       CONTRACT_INTERFACES,
       this.deployer
     );
+    this.ready = false
 
-    this.contract.mint(this.wallet.address,'100000')
+    this.amount = 1
   }
 
   async onSuccessfulTx(receipt: any) {
-    console.log(receipt)
     super.onSuccessfulTx(receipt);
+  }
+
+  async action(): Promise<void> {
+    if (!this.ready){
+      this.contract.mint(this.wallet.address,'100000')
+      await sleep(1000);
+      this.ready = true;
+    }
+    await super.action();    
   }
 
   createMessage(sender: any) : Tx {
@@ -59,9 +71,10 @@ export class ConvertERC20Worker extends EvmosWorker {
     const txSimple = createTxMsgConvertERC20(this.chainID, sender, fee, '', {
       senderHexFormatted:this.wallet.address,
       receiverEvmosFormatted: sender.accountAddress,
-      amount: '1',
+      amount: this.amount.toString(),
       contract_address: this.params.contractAddress,
     })
+    this.amount += 1;
     return txSimple
   }
 }

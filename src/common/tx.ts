@@ -17,7 +17,6 @@ export async function sendNativeCoin(
   // tx.gasLimit = estimate;
 
   const txResponse = await signer.sendTransaction(tx);
-
   if (waitForTxToMine) await txResponse.wait();
 }
 

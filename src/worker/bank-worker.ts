@@ -6,6 +6,7 @@ import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
 
 export class BankWorker extends EvmosWorker {
   private readonly params: EvmosWorkerParams;
+  private amount : number;
   constructor(params: EvmosWorkerParams, extra: any) {
     super({
       account: params.account,
@@ -22,7 +23,8 @@ export class BankWorker extends EvmosWorker {
     });
     this.params = params;
     this.type = bank
-    this.extraParams = extra
+    this.extraParams = extra;
+    this.amount = 1
   }
 
   async onSuccessfulTx(receipt: any) {
@@ -32,9 +34,10 @@ export class BankWorker extends EvmosWorker {
   createMessage(sender: any) : Tx {
     const txSimple = createMessageSend(this.chainID, sender, LOCALNET_FEE, '', {
       destinationAddress: this.params.receiverAddress,
-      amount: '1',
+      amount: this.amount.toString(),
       denom: 'aevmos',
     })
+    this.amount += 1;
     return txSimple
   }
 }
