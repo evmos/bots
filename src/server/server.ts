@@ -3,6 +3,7 @@ import promBundle from 'express-prom-bundle';
 import { Logger } from '../common/logger';
 
 export interface ServerParams {
+  rpcUrl: string;
   port: number;
   logger: Logger;
 }
@@ -30,5 +31,6 @@ export async function runServer(params: ServerParams) {
   app.listen(port, '0.0.0.0', () => {
     // tslint:disable-next-line:no-console
     params.logger.info(`server started at http://0.0.0.0:${port}`);
+    params.logger.info(`bot querying rpcUrl ${params.rpcUrl}`)
   });
 }

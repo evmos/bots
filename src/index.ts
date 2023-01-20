@@ -20,7 +20,9 @@ async function run() {
     process.exit(1);
   });
 
+
   runServer({
+    rpcUrl: config.rpcUrl,
     port: config.serverPort,
     logger: logger
   });

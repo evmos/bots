@@ -1,4 +1,4 @@
-import { BigNumber, ContractFactory, providers, Signer, Wallet } from 'ethers';
+import { BigNumber, ContractFactory, providers, Wallet } from 'ethers';
 import { getNativeCoinBalance, sendNativeCoin, sleep } from '../common/tx';
 import { GasConsumerWorker } from '../worker/gas-consumer-worker';
 import { IWorker } from '../worker/iworker';
