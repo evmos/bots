@@ -82,8 +82,8 @@ export abstract class IWorker {
           this.sendTransaction()
         );
         if (err) {
-          this.onFailedTx(err);
-          continue
+          await this.onFailedTx(err);
+          continue;
         }
         // not awaiting here because we want to handle succesful TX async
         txResponse
@@ -103,7 +103,15 @@ export abstract class IWorker {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async onFailedTx(error: any) {
-    // handle recovery for every case
+    this.failedTxCounter.inc({
+      worker: this.account.address,
+      reason: error.code
+    });
+    await this.handleFailedTxRecovery(error);
+  }
+
+  // handle recovery for every error case
+  async handleFailedTxRecovery(error: any) {
     switch (error.code) {
       case etherLogger.errors.INSUFFICIENT_FUNDS:
         this.logger.warn('insufficient funds. need refunding');
@@ -112,7 +120,7 @@ export abstract class IWorker {
         break;
       case etherLogger.errors.NONCE_EXPIRED:
         this.logger.error(etherLogger.errors.NONCE_EXPIRED);
-        this.refreshSignerNonce('latest');
+        await this.refreshSignerNonce('latest');
         break;
       case etherLogger.errors.SERVER_ERROR:
         const errorMessage = JSON.parse(error.body)['error']['message'];
@@ -122,9 +130,9 @@ export abstract class IWorker {
         // for some reason our nonce expired cases are not being categorized
         // by ethers library as so
         if (errorMessage.includes('nonce')) {
-          this.refreshSignerNonce('latest');
+          await this.refreshSignerNonce('latest');
         } else if (errorMessage.includes('tx already in mempool')) {
-          this.refreshSignerNonce('pending');
+          await this.refreshSignerNonce('pending');
         }
         break;
       default:
@@ -133,10 +141,6 @@ export abstract class IWorker {
         });
         break;
     }
-    this.failedTxCounter.inc({
-      worker: this.account.address,
-      reason: error.code
-    });
   }
 
   async refreshSignerNonce(blockTag: 'latest' | 'pending') {
