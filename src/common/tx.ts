@@ -28,5 +28,5 @@ export async function getNativeCoinBalance(
 }
 
 export function sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -1,8 +1,10 @@
-import { createTxMsgDelegate } from '@evmos/transactions'
-import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet'
+import {
+  createTxMsgDelegate,
+  TxContext
+} from '@evmos/evmosjs/packages/transactions';
+import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
 import { delegate } from '../common/worker-const';
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
-
 
 export class DelegateWorker extends EvmosWorker {
   private readonly params: EvmosWorkerParams;
@@ -29,12 +31,18 @@ export class DelegateWorker extends EvmosWorker {
     super.onSuccessfulTx(receipt);
   }
 
-  createMessage(sender: any) : Tx {
-    const txSimple = createTxMsgDelegate(this.chainID, sender, LOCALNET_FEE, '', {
+  createMessage(sender: any): Tx {
+    const ctx: TxContext = {
+      chain: this.chainID,
+      sender,
+      fee: LOCALNET_FEE,
+      memo: ''
+    };
+    const txSimple = createTxMsgDelegate(ctx, {
       validatorAddress: this.params.receiverAddress,
       amount: '1',
-      denom: 'aevmos',
-    })
-    return txSimple
+      denom: 'aevmos'
+    });
+    return txSimple;
   }
 }

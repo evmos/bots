@@ -24,7 +24,7 @@ export class GasConsumerWorker extends IWorker {
       logger: params.logger,
       successfulTxFeeGauge: params.successfulTxFeeGauge
     });
-    this.type = gasConsumer
+    this.type = gasConsumer;
     this.params = params;
     this.contract = new Contract(
       params.contractAddress,
@@ -44,11 +44,11 @@ export class GasConsumerWorker extends IWorker {
       index: receipt.transactionIndex
     });
     this.successfulTxFeeGauge.set(
-    {
-      worker: this.account.address
-    },
-    receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
+      {
+        worker: this.account.address
+      },
+      receipt.gasUsed.mul(receipt.effectiveGasPrice).toNumber()
     );
-    super.onSuccessfulTx(receipt)
+    super.onSuccessfulTx(receipt);
   }
 }

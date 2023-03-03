@@ -34,23 +34,21 @@ export abstract class IWorker {
   protected _isLowOnFunds = false;
   protected _isStopped = false;
   protected wallet: Wallet;
-  public type :string;
-  public extraParams : any;
+  public type: string;
+  public extraParams: any;
 
   constructor(params: IWorkerParams) {
     this.account = params.account;
-    this.wallet = new Wallet(params.account.privateKey, params.provider)
-    this.signer = new NonceManager(
-      this.wallet
-    );
+    this.wallet = new Wallet(params.account.privateKey, params.provider);
+    this.signer = new NonceManager(this.wallet);
     this.successfulTxCounter = params.successfulTxCounter;
     this.failedTxCounter = params.failedTxCounter;
     this.successfulTxFeeGauge = params.successfulTxFeeGauge;
     this.onInsufficientFunds = params.onInsufficientFunds;
     this.logger = params.logger.child({
-      workerAddr: params.account.address,
+      workerAddr: params.account.address
     });
-    this.type = "invalid"
+    this.type = 'invalid';
   }
 
   abstract sendTransaction(): Promise<providers.TransactionResponse>;
@@ -77,7 +75,7 @@ export abstract class IWorker {
         );
         if (err) {
           this.onFailedTx(err);
-          continue
+          continue;
         }
         // not awaiting here because we want to handle successful TX async
         txResponse
@@ -85,7 +83,7 @@ export abstract class IWorker {
           .then((txReceipt: providers.TransactionReceipt) => {
             this.onSuccessfulTx(txReceipt);
           })
-          .catch((err : any) => {
+          .catch((err: any) => {
             this.logger.error(err);
           });
       } else {
@@ -98,7 +96,7 @@ export abstract class IWorker {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async onFailedTx(error: any) {
     if (error == undefined) {
-      error = {code : -1}
+      error = { code: -1 };
     }
     // handle recovery for every case
     switch (error.code) {
@@ -112,6 +110,7 @@ export abstract class IWorker {
         this.refreshSignerNonce('latest');
         break;
       case etherLogger.errors.SERVER_ERROR:
+        // eslint-disable-next-line no-case-declarations
         const errorMessage = JSON.parse(error.body)['error']['message'];
         this.logger.error(etherLogger.errors.SERVER_ERROR, {
           error: errorMessage
