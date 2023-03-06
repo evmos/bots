@@ -1,5 +1,10 @@
 import { BigNumber, ContractFactory, providers, Wallet } from 'ethers';
-import { getNativeCoinBalance, sendNativeCoin, sleep } from '../common/tx.js';
+import {
+  getNativeCoinBalance,
+  sendNativeCoin,
+  signTransaction,
+  sleep
+} from '../common/tx.js';
 import { GasConsumerWorker } from '../worker/gas-consumer-worker.js';
 import { IWorker } from '../worker/iworker.js';
 import fs from 'fs';
@@ -18,23 +23,15 @@ import {
   ethSender,
   gasConsumer
 } from '../common/worker-const.js';
-import { createMsgRegisterERC20 } from '@evmos/evmosjs/packages/proto/dist/messages/erc20/index.js';
 import {
   createTxMsgSubmitProposal,
   MsgSubmitProposalParams,
+  createTxMsgVote,
+  MsgVoteParams,
   TxContext
 } from '@evmos/evmosjs/packages/transactions/dist/index.js';
-import {
-  broadcast,
-  getSender,
-  signTransaction,
-  LOCALNET_FEE
-} from '@hanchon/evmos-ts-wallet';
-import { TxGenerated } from '@tharsis/transactions';
-import {
-  createTxMsgVote,
-  MsgVoteParams
-} from '@evmos/evmosjs/packages/transactions/dist/messages/gov/index.js';
+import { broadcast, getSender, LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
+import { createMsgRegisterERC20 } from '@evmos/evmosjs/packages/proto/dist/index.js';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -284,7 +281,7 @@ export class Orchestrator {
       [erc20Contract]
     );
 
-    let sender = await getSender(this.wallet, this.params.apiUrl);
+    const sender = await getSender(this.wallet, this.params.apiUrl);
     const proposal: MsgSubmitProposalParams = {
       content: registerErc20,
       denom: 'aevmos',
@@ -307,31 +304,36 @@ export class Orchestrator {
       memo: ''
     };
 
+    this.logger.info('registering ERC20...');
+
     const sendProposal = createTxMsgSubmitProposal(ctx, proposal);
-    const signed = await signTransaction(
-      this.wallet,
-      sendProposal as unknown as TxGenerated
-    );
+    const signed = await signTransaction(this.wallet, sendProposal);
     const res = await broadcast(signed, this.params.apiUrl);
+
+    // wait 3s for tx to be processed
+    await sleep(3000);
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
 
-    sender = await getSender(this.wallet, this.params.apiUrl);
+    // get updated sender (with updated sequence) and use it on tx context
+    ctx.sender = await getSender(this.wallet, this.params.apiUrl);
+
     const pos = res.tx_response.raw_log.indexOf('proposal_id');
     const endPos = res.tx_response.raw_log.indexOf('"}', pos);
     const proposal_id: number = res.tx_response.raw_log.substring(
       pos + 22,
       endPos
     );
+    this.logger.info(`created RegisterERC20Proposal with id ${proposal_id}`);
+
     const vote: MsgVoteParams = {
       proposalId: proposal_id,
       option: 1
     };
 
+    this.logger.info('voting...');
     const voteProposal = createTxMsgVote(ctx, vote);
-    const signedVote = await signTransaction(
-      this.wallet,
-      voteProposal as unknown as TxGenerated
-    );
+
+    const signedVote = await signTransaction(this.wallet, voteProposal);
     await broadcast(signedVote, this.params.apiUrl);
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
 
