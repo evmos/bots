@@ -18,7 +18,7 @@ import {
   ethSender,
   gasConsumer
 } from '../common/worker-const.js';
-import { createRegisterErc20 } from '@evmos/evmosjs/packages/eip712/dist/index.js';
+import { createMsgRegisterERC20 } from '@evmos/evmosjs/packages/proto/dist/messages/erc20/index.js';
 import {
   createTxMsgSubmitProposal,
   MsgSubmitProposalParams,
@@ -278,7 +278,7 @@ export class Orchestrator {
   }
 
   async registerPair(erc20Contract: string): Promise<boolean> {
-    const registerErc20 = createRegisterErc20(
+    const registerErc20 = createMsgRegisterERC20(
       'Register test',
       'Register test',
       [erc20Contract]

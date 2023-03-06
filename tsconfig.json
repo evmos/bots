@@ -24,7 +24,6 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "incremental": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "types": [
