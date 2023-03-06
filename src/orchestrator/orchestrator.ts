@@ -337,9 +337,9 @@ export class Orchestrator {
     await broadcast(signedVote, this.params.apiUrl);
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
 
-    console.log('Sleeping for proposal to pass');
+    this.logger.info('Sleeping for proposal to pass');
     await sleep(60000);
-    console.log('Awaken');
+    this.logger.info('Awaken');
     return true;
   }
 
