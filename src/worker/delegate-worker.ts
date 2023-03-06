@@ -1,10 +1,10 @@
 import {
   createTxMsgDelegate,
   TxContext
-} from '@evmos/evmosjs/packages/transactions';
+} from '@evmos/evmosjs/packages/transactions/dist/index.js';
 import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
-import { delegate } from '../common/worker-const';
-import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
+import { delegate } from '../common/worker-const.js';
+import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
 
 export class DelegateWorker extends EvmosWorker {
   private readonly params: EvmosWorkerParams;

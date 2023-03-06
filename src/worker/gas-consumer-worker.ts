@@ -1,6 +1,6 @@
 import { Contract, providers } from 'ethers';
-import { gasConsumer } from '../common/worker-const';
-import { IWorker, IWorkerParams } from './iworker';
+import { gasConsumer } from '../common/worker-const.js';
+import { IWorker, IWorkerParams } from './iworker.js';
 
 export interface GasConsumerWorkerParams extends IWorkerParams {
   contractAddress: string;

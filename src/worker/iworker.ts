@@ -1,9 +1,9 @@
 import { providers, Wallet } from 'ethers';
 import { Counter, Gauge } from 'prom-client';
 import { NonceManager } from '@ethersproject/experimental';
-import { Logger } from '../common/logger';
-import { sleep } from '../common/tx';
-import { Logger as etherLogger } from 'ethers/lib/utils';
+import { Logger } from '../common/logger.js';
+import { sleep } from '../common/tx.js';
+import { Logger as etherLogger } from 'ethers/lib/utils.js';
 import { useTryAsync } from 'no-try';
 
 export interface Account {
@@ -53,6 +53,9 @@ export abstract class IWorker {
 
   abstract sendTransaction(): Promise<providers.TransactionResponse>;
 
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onSuccessfulTx(receipt: providers.TransactionReceipt) {
     this.successfulTxCounter.inc({
       worker: this.account.address

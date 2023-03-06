@@ -1,12 +1,14 @@
 import { BigNumber, providers } from 'ethers';
-import { ethSender } from '../common/worker-const';
-import { IWorker, IWorkerParams } from './iworker';
+import { ethSender } from '../common/worker-const.js';
+import { IWorker, IWorkerParams } from './iworker.js';
 
 export interface EthSenderWorkerParams extends IWorkerParams {
   receiverAddress: string;
 }
 
 export class EthSenderWorker extends IWorker {
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
   private readonly params: EthSenderWorkerParams;
   private readonly receiverAddress: string;
   private nonce: number;

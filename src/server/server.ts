@@ -1,7 +1,7 @@
 import express from 'express';
 import promBundle from 'express-prom-bundle';
-import { Logger } from '../common/logger';
-import { Orchestrator } from '../orchestrator/orchestrator';
+import { Logger } from '../common/logger.js';
+import { Orchestrator } from '../orchestrator/orchestrator.js';
 
 export interface ServerParams {
   port: number;

@@ -1,13 +1,13 @@
 import {
   createTxMsgConvertERC20,
   TxContext
-} from '@evmos/evmosjs/packages/transactions';
+} from '@evmos/evmosjs/packages/transactions/dist/index.js';
 import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
-import { converter } from '../common/worker-const';
-import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
+import { converter } from '../common/worker-const.js';
+import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
 import { Contract } from 'ethers';
 import { NonceManager } from '@ethersproject/experimental';
-import { sleep } from '../common/tx';
+import { sleep } from '../common/tx.js';
 
 export interface ERC20ConverterWorkerParams extends EvmosWorkerParams {
   contractAddress: string;

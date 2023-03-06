@@ -1,11 +1,11 @@
-import { LogLevel } from './common/logger';
+import { LogLevel } from './common/logger.js';
 import {
   booleanFromEnvOrDefault,
   logLevelFromEnvOrDefault,
   numberFromEnvOrDefault,
   stringFromEnvOrDefault,
   stringFromEnvOrThrow
-} from './common/utils';
+} from './common/utils.js';
 
 export interface BotConfig {
   rpcUrl: string;

@@ -1,7 +1,7 @@
-import { getConfig } from './bot.config';
-import { LoggerService } from './common/logger';
-import { Orchestrator } from './orchestrator/orchestrator';
-import { runServer } from './server/server';
+import { getConfig } from './bot.config.js';
+import { LoggerService } from './common/logger.js';
+import { Orchestrator } from './orchestrator/orchestrator.js';
+import { runServer } from './server/server.js';
 
 async function run() {
   const config = getConfig();

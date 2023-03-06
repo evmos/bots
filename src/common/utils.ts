@@ -1,4 +1,4 @@
-import { LogLevel } from './logger';
+import { LogLevel } from './logger.js';
 
 export function stringFromEnvOrThrow(key: string): string {
   const value = process.env[key];

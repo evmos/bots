@@ -1,21 +1,21 @@
-import { IWorker, IWorkerParams } from './iworker';
+import { IWorker, IWorkerParams } from './iworker.js';
 import {
   broadcast,
   getSender,
   signTransaction
 } from '@hanchon/evmos-ts-wallet';
-import { Chain } from '@evmos/evmosjs/packages/transactions';
-import { sleep } from '../common/tx';
+import { Chain } from '@evmos/evmosjs/packages/transactions/dist/index.js';
+import { sleep } from '../common/tx.js';
 
 export interface Tx {
   signDirect: {
-    body: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx').TxBody;
-    authInfo: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx').AuthInfo;
+    body: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').TxBody;
+    authInfo: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').AuthInfo;
     signBytes: string;
   };
   legacyAmino: {
-    body: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx').TxBody;
-    authInfo: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx').AuthInfo;
+    body: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').TxBody;
+    authInfo: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').AuthInfo;
     signBytes: string;
   };
   eipToSign: {

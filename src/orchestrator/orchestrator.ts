@@ -1,29 +1,29 @@
 import { BigNumber, ContractFactory, providers, Wallet } from 'ethers';
-import { getNativeCoinBalance, sendNativeCoin, sleep } from '../common/tx';
-import { GasConsumerWorker } from '../worker/gas-consumer-worker';
-import { IWorker } from '../worker/iworker';
+import { getNativeCoinBalance, sendNativeCoin, sleep } from '../common/tx.js';
+import { GasConsumerWorker } from '../worker/gas-consumer-worker.js';
+import { IWorker } from '../worker/iworker.js';
 import fs from 'fs';
 import path from 'path';
 import { NonceManager } from '@ethersproject/experimental';
 import { Counter, Gauge } from 'prom-client';
-import { Logger } from '../common/logger';
-import { BankWorker } from '../worker/bank-worker';
-import { DelegateWorker } from '../worker/delegate-worker';
-import { ConvertERC20Worker } from '../worker/convertErc20-worker';
-import { EthSenderWorker } from '../worker/eth-sender-worker';
+import { Logger } from '../common/logger.js';
+import { BankWorker } from '../worker/bank-worker.js';
+import { DelegateWorker } from '../worker/delegate-worker.js';
+import { ConvertERC20Worker } from '../worker/convertErc20-worker.js';
+import { EthSenderWorker } from '../worker/eth-sender-worker.js';
 import {
   bank,
   converter,
   delegate,
   ethSender,
   gasConsumer
-} from '../common/worker-const';
-import { createRegisterErc20 } from '@evmos/evmosjs/packages/eip712';
+} from '../common/worker-const.js';
+import { createRegisterErc20 } from '@evmos/evmosjs/packages/eip712/dist/index.js';
 import {
   createTxMsgSubmitProposal,
   MsgSubmitProposalParams,
   TxContext
-} from '@evmos/evmosjs/packages/transactions';
+} from '@evmos/evmosjs/packages/transactions/dist/index.js';
 import {
   broadcast,
   getSender,
@@ -34,7 +34,7 @@ import { TxGenerated } from '@tharsis/transactions';
 import {
   createTxMsgVote,
   MsgVoteParams
-} from '@evmos/evmosjs/packages/transactions/dist/messages/gov';
+} from '@evmos/evmosjs/packages/transactions/dist/messages/gov/index.js';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;

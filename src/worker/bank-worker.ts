@@ -1,10 +1,10 @@
 import {
   createTxMsgSend,
   TxContext
-} from '@evmos/evmosjs/packages/transactions';
+} from '@evmos/evmosjs/packages/transactions/dist/index.js';
 import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
-import { bank } from '../common/worker-const';
-import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
+import { bank } from '../common/worker-const.js';
+import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
 
 export class BankWorker extends EvmosWorker {
   private readonly params: EvmosWorkerParams;
