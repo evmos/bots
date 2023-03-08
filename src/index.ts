@@ -22,7 +22,7 @@ async function run() {
 
   const orchestrator = new Orchestrator({
     orchestratorAccountPrivKey: config.orchestratorAccountPrivateKey,
-    numberOfWorkers: config.numberOfAccounts,
+    numberOfWorkers: config.numberOfWorkers,
     fundAllocationPerAccountBASE: config.fundsPerAccount,
     minFundsOrchestrator: config.orchestratorMinFunds,
     rpcUrl: config.rpcUrl,

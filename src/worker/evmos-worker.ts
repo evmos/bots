@@ -1,11 +1,7 @@
 import { IWorker, IWorkerParams } from './iworker.js';
-import {
-  broadcast,
-  getSender,
-  signTransaction
-} from '@hanchon/evmos-ts-wallet';
+import { broadcast, getSender } from '@hanchon/evmos-ts-wallet';
 import { Chain } from '@evmos/evmosjs/packages/transactions/dist/index.js';
-import { sleep } from '../common/tx.js';
+import { signTransaction, sleep } from '../common/tx.js';
 
 export interface Tx {
   signDirect: {
@@ -42,6 +38,7 @@ export interface EvmosWorkerParams extends IWorkerParams {
 export abstract class EvmosWorker extends IWorker {
   protected readonly chainID: Chain;
   protected readonly apiUrl: string;
+  protected _updateSequence = false;
   protected sequence: number;
   constructor(params: EvmosWorkerParams) {
     super({
@@ -78,7 +75,11 @@ export abstract class EvmosWorker extends IWorker {
 
   async prepareMessage() {
     const sender = await getSender(this.wallet, this.apiUrl);
-    sender.sequence = this.sequence;
+    // fix the sequence in case there's a mismatch
+    if (this._updateSequence) {
+      sender.sequence = this.sequence;
+      this._updateSequence = false;
+    }
     const txSimple = this.createMessage(sender);
     this.sequence = this.sequence + 1;
     return txSimple;
@@ -117,16 +118,17 @@ export abstract class EvmosWorker extends IWorker {
       const endPos = error.raw_log.indexOf(',', 36);
       const expectedSequence: string = error.raw_log.substring(36, endPos);
       this.sequence = parseInt(expectedSequence);
+      this._updateSequence = true;
     }
   }
 
   async run(): Promise<void> {
     while (!this._isStopped) {
+      // delay to prevent failure due to block gas limit
+      // and stuck the main thread
+      await sleep(3000);
       if (!this._isLowOnFunds) {
         await this.action();
-      } else {
-        // delay to prevent loop from running synchronously
-        await sleep(1000);
       }
     }
   }

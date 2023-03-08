@@ -28,7 +28,7 @@ export class EthSenderWorker extends IWorker {
     this.receiverAddress = params.receiverAddress;
 
     this.nonce = -1;
-    this.gasPrice = BigNumber.from('100');
+    this.gasPrice = BigNumber.from('1000000000');
   }
 
   async sendTransaction(): Promise<providers.TransactionResponse> {
@@ -41,7 +41,7 @@ export class EthSenderWorker extends IWorker {
       to: this.receiverAddress,
       value: BigNumber.from('1'),
       nonce: this.nonce,
-      gasLimit: '0x21000',
+      gasLimit: '0xF4240',
       gasPrice: this.gasPrice
     };
     this.nonce = this.nonce + 1;

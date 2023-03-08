@@ -21,7 +21,8 @@ import {
   converter,
   delegate,
   ethSender,
-  gasConsumer
+  gasConsumer,
+  workersToSpan
 } from '../common/worker-const.js';
 import {
   createTxMsgSubmitProposal,
@@ -32,6 +33,7 @@ import {
 } from '@evmos/evmosjs/packages/transactions/dist/index.js';
 import { broadcast, getSender, LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
 import { createMsgRegisterERC20 } from '@evmos/evmosjs/packages/proto/dist/index.js';
+import { getValidatorsAddresses } from '../client/gov.js';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -64,6 +66,7 @@ export class Orchestrator {
   private toFundQueue: IWorker[] = [];
   private isStopped = false;
   private readonly logger: Logger;
+  private validators: string[] = [];
 
   private readonly successfulTxCounter = new Counter({
     name: 'num_success_tx',
@@ -83,7 +86,10 @@ export class Orchestrator {
 
   constructor(params: OrchestratorParams) {
     this.params = params;
-    this.provider = new providers.JsonRpcProvider(params.rpcUrl);
+    this.provider = new providers.JsonRpcProvider({
+      url: params.rpcUrl,
+      timeout: 5_000 // 5s
+    });
     this.wallet = new Wallet(params.orchestratorAccountPrivKey, this.provider);
     this.signer = new NonceManager(this.wallet);
     this.logger = params.logger;
@@ -127,9 +133,11 @@ export class Orchestrator {
   async initialize() {
     this.isInitiliazing = true;
     this.logger.info('initializing orchestrator');
+    this.validators = await getValidatorsAddresses(this.params.apiUrl);
     await this._throwIfOrchestratorBalanceBelowThreshold();
     await this._initializeContracts();
     await this._initializeWorkers();
+    this._startWorkers();
     this._initializeRefunder();
     this.isInitiliazing = false;
     return this;
@@ -143,9 +151,11 @@ export class Orchestrator {
   }
 
   async _initializeWorkers() {
-    this.logger.info('initializing workers');
-    for (let i = 0; i < 50; i++) {
-      await this.addWorker(converter, {});
+    this.logger.info(`initializing ${this.params.numberOfWorkers} workers`);
+    const typesCount = workersToSpan.length;
+    for (let i = 0; i < this.params.numberOfWorkers; i++) {
+      const workerType = workersToSpan[i % typesCount];
+      await this.addWorker(workerType, {});
     }
   }
 
@@ -181,11 +191,17 @@ export class Orchestrator {
       return;
     }
 
-    // start worker
-    worker.run();
-
     // add worker to internal list
+    this.logger.info(`created ${type} worker @ ${workerWallet.address}`);
     this.workers.push(worker);
+  }
+
+  _startWorkers() {
+    this.logger.info('starting workers');
+    for (const worker of this.workers) {
+      this.logger.info(`start worker @ ${worker.account.address}`);
+      worker.run();
+    }
   }
 
   killWorker(type: string) {
@@ -209,15 +225,15 @@ export class Orchestrator {
       if (!this.isInitiliazing && this.toFundQueue.length > 0) {
         while (this.toFundQueue.length > 0) {
           const worker = this.toFundQueue.shift();
+          this.logger.info(`refunding account ${worker!.account.address}`);
           if (worker) {
             await this._fundAccount(worker.account.address, true);
             worker.hasBeenRefunded();
           }
         }
-      } else {
-        // sleep to prevent loop from running synchronously
-        await sleep(1000);
       }
+      // sleep to prevent loop from running synchronously
+      await sleep(1000);
     }
   }
 
@@ -337,9 +353,9 @@ export class Orchestrator {
     await broadcast(signedVote, this.params.apiUrl);
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
 
-    this.logger.info('Sleeping for proposal to pass');
-    await sleep(60000);
-    this.logger.info('Awaken');
+    this.logger.info('sleeping... wait proposal to pass');
+    await sleep(45000);
+    this.logger.info('awaken');
     return true;
   }
 
@@ -446,9 +462,9 @@ export class Orchestrator {
         address: workerWallet.address
       },
       provider: this.provider,
-      contractAddress: this.contracts.gasConsumerContract
-        ? this.contracts.gasConsumerContract
-        : await this._deployGasConsumerContract(),
+      contractAddress:
+        this.contracts.gasConsumerContract ||
+        (await this._deployGasConsumerContract()),
       gasToConsumePerTX: this.params.gasToConsumePerTx,
       successfulTxCounter: this.successfulTxCounter,
       failedTxCounter: this.failedTxCounter,
@@ -461,11 +477,16 @@ export class Orchestrator {
     return worker;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   createDelegateWorker(workerWallet: Wallet, params: any): [IWorker, boolean] {
     let valid = true;
     // cant delegate to a default value, since validators change
     if (!('validator' in params)) {
-      valid = false;
+      if (this.validators && this.validators.length) {
+        params['validator'] = this.validators[0];
+      } else {
+        valid = false;
+      }
     }
     const worker = new DelegateWorker(
       {
@@ -493,6 +514,7 @@ export class Orchestrator {
 
   async createErc20ConverterWorker(
     workerWallet: Wallet,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     extraParams: any
   ): Promise<IWorker> {
     const worker = new ConvertERC20Worker(
