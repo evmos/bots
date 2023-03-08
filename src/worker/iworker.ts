@@ -2,7 +2,7 @@ import { providers, Wallet } from 'ethers';
 import { Counter, Gauge } from 'prom-client';
 import { NonceManager } from '@ethersproject/experimental';
 import { Logger } from '../common/logger.js';
-import { sleep } from '../common/tx.js';
+import { refreshSignerNonce, sleep } from '../common/tx.js';
 import { Logger as etherLogger } from 'ethers/lib/utils.js';
 import { useTryAsync } from 'no-try';
 
@@ -28,7 +28,7 @@ export abstract class IWorker {
   private readonly successfulTxCounter: Counter<string>;
   private readonly failedTxCounter: Counter<string>;
   protected readonly successfulTxFeeGauge: Gauge<string>;
-  protected readonly signer: NonceManager;
+  protected signer: NonceManager;
   private readonly onInsufficientFunds: OnInsufficientFundsCallback;
   protected readonly logger: Logger;
   protected _isLowOnFunds = false;
@@ -59,6 +59,10 @@ export abstract class IWorker {
   onSuccessfulTx(receipt: providers.TransactionReceipt) {
     this.successfulTxCounter.inc({
       worker: this.account.address
+    });
+    this.logger.debug('new successful tx', {
+      hash: receipt.transactionHash,
+      block: receipt.blockNumber
     });
   }
 
@@ -139,15 +143,6 @@ export abstract class IWorker {
   }
 
   async refreshSignerNonce(blockTag: 'latest' | 'pending') {
-    const [err, txCount] = await useTryAsync(() =>
-      this.signer.getTransactionCount(blockTag)
-    );
-    if (err) {
-      this.logger.error('failed to get account nonce', {
-        error: err
-      });
-    } else {
-      this.signer.setTransactionCount(txCount);
-    }
+    this.signer = await refreshSignerNonce(this.signer, blockTag, this.logger);
   }
 }

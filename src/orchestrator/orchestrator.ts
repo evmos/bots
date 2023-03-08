@@ -1,5 +1,6 @@
 import { BigNumber, ContractFactory, providers, Wallet } from 'ethers';
 import {
+  broadcastTxWithRetry,
   getNativeCoinBalance,
   sendNativeCoin,
   signTransaction,
@@ -31,9 +32,9 @@ import {
   MsgVoteParams,
   TxContext
 } from '@evmos/evmosjs/packages/transactions/dist/index.js';
-import { broadcast, getSender, LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
+import { getSender, LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
 import { createMsgRegisterERC20 } from '@evmos/evmosjs/packages/proto/dist/index.js';
-import { getValidatorsAddresses } from '../client/gov.js';
+import { getValidatorsAddresses } from '../client/index.js';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -67,6 +68,7 @@ export class Orchestrator {
   private isStopped = false;
   private readonly logger: Logger;
   private validators: string[] = [];
+  private maxRetries = 10;
 
   private readonly successfulTxCounter = new Counter({
     name: 'num_success_tx',
@@ -199,7 +201,7 @@ export class Orchestrator {
   _startWorkers() {
     this.logger.info('starting workers');
     for (const worker of this.workers) {
-      this.logger.info(`start worker @ ${worker.account.address}`);
+      this.logger.debug(`start worker @ ${worker.account.address}`);
       worker.run();
     }
   }
@@ -225,7 +227,7 @@ export class Orchestrator {
       if (!this.isInitiliazing && this.toFundQueue.length > 0) {
         while (this.toFundQueue.length > 0) {
           const worker = this.toFundQueue.shift();
-          this.logger.info(`refunding account ${worker!.account.address}`);
+          this.logger.debug(`refunding account ${worker?.account.address}`);
           if (worker) {
             await this._fundAccount(worker.account.address, true);
             worker.hasBeenRefunded();
@@ -233,7 +235,7 @@ export class Orchestrator {
         }
       }
       // sleep to prevent loop from running synchronously
-      await sleep(1000);
+      await sleep(3000);
     }
   }
 
@@ -324,7 +326,24 @@ export class Orchestrator {
 
     const sendProposal = createTxMsgSubmitProposal(ctx, proposal);
     const signed = await signTransaction(this.wallet, sendProposal);
-    const res = await broadcast(signed, this.params.apiUrl);
+    const res = await broadcastTxWithRetry(
+      signed,
+      this.params.apiUrl,
+      this.maxRetries,
+      this.logger
+    );
+
+    if (
+      (res.code && res.code !== 0) ||
+      (res.tx_response && res.tx_response.code !== 0)
+    ) {
+      this.logger.error(
+        `could not register pair after ${this.maxRetries} retries: code ${
+          res.code || res.tx_response.code
+        }, message: ${res.message || res.tx_response.raw_log}`
+      );
+      return false;
+    }
 
     // wait 3s for tx to be processed
     await sleep(3000);
@@ -346,16 +365,25 @@ export class Orchestrator {
       option: 1
     };
 
-    this.logger.info('voting...');
+    this.logger.info('voting');
     const voteProposal = createTxMsgVote(ctx, vote);
 
     const signedVote = await signTransaction(this.wallet, voteProposal);
-    await broadcast(signedVote, this.params.apiUrl);
+    await broadcastTxWithRetry(
+      signedVote,
+      this.params.apiUrl,
+      this.maxRetries,
+      this.logger
+    );
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
 
-    this.logger.info('sleeping... wait proposal to pass');
-    await sleep(45000);
-    this.logger.info('awaken');
+    // no need to wait if number of workers is > 5
+    // setting up the workers covers the time for the proposal to pass
+    if (this.params.numberOfWorkers < 5) {
+      this.logger.info('sleeping... wait proposal to pass');
+      await sleep(45000);
+      this.logger.info('awaken');
+    }
     return true;
   }
 

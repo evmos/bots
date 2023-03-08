@@ -1,7 +1,7 @@
 import { IWorker, IWorkerParams } from './iworker.js';
-import { broadcast, getSender } from '@hanchon/evmos-ts-wallet';
 import { Chain } from '@evmos/evmosjs/packages/transactions/dist/index.js';
-import { signTransaction, sleep } from '../common/tx.js';
+import { broadcastTxWithRetry, signTransaction, sleep } from '../common/tx.js';
+import { getSenderWithRetry } from '../client/index.js';
 
 export interface Tx {
   signDirect: {
@@ -38,6 +38,7 @@ export interface EvmosWorkerParams extends IWorkerParams {
 export abstract class EvmosWorker extends IWorker {
   protected readonly chainID: Chain;
   protected readonly apiUrl: string;
+  protected readonly retries = 5;
   protected _updateSequence = false;
   protected sequence: number;
   constructor(params: EvmosWorkerParams) {
@@ -62,7 +63,7 @@ export abstract class EvmosWorker extends IWorker {
   async sendTransaction(): Promise<any> {
     const txSimple = await this.prepareMessage();
     const res = await signTransaction(this.wallet, txSimple as any);
-    return broadcast(res, this.apiUrl);
+    return broadcastTxWithRetry(res, this.apiUrl, this.retries, this.logger);
   }
 
   async onSuccessfulTx(receipt: any) {
@@ -74,7 +75,12 @@ export abstract class EvmosWorker extends IWorker {
   }
 
   async prepareMessage() {
-    const sender = await getSender(this.wallet, this.apiUrl);
+    const sender = await getSenderWithRetry(
+      this.wallet,
+      this.apiUrl,
+      this.retries,
+      this.logger
+    );
     // fix the sequence in case there's a mismatch
     if (this._updateSequence) {
       sender.sequence = this.sequence;
@@ -101,7 +107,12 @@ export abstract class EvmosWorker extends IWorker {
       ) {
         this.onFailedTx(txResponse.tx_response);
       } else {
-        const sender = await getSender(this.wallet, this.apiUrl);
+        const sender = await getSenderWithRetry(
+          this.wallet,
+          this.apiUrl,
+          this.retries,
+          this.logger
+        );
         this.sequence = sender.sequence;
         this.onFailedTx({ code: txResponse.code, raw_log: txResponse.message });
       }

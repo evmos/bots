@@ -1,11 +1,37 @@
+import { NonceManager } from '@ethersproject/experimental';
 import { TransactionRequest } from '@ethersproject/providers';
 import { createTxRaw } from '@evmos/evmosjs/packages/proto/dist/index.js';
 import { TxPayload } from '@evmos/evmosjs/packages/transactions/dist/index.js';
-import { BigNumber, providers, Signer, Wallet } from 'ethers';
+import { broadcast } from '@hanchon/evmos-ts-wallet';
+import { BigNumber, providers, Wallet } from 'ethers';
 import { arrayify, concat, splitSignature } from 'ethers/lib/utils.js';
+import { useTryAsync } from 'no-try';
+import { Logger } from 'winston';
+import { getTransactionDetailsByHash } from '../client/index.js';
+
+export async function refreshSignerNonce(
+  signer: NonceManager,
+  blockTag: 'latest' | 'pending',
+  logger?: Logger
+): Promise<NonceManager> {
+  const [err, txCount] = await useTryAsync(() =>
+    signer.getTransactionCount(blockTag)
+  );
+  if (err) {
+    logger
+      ? logger.error('failed to get account nonce', {
+          error: err
+        })
+      : // eslint-disable-next-line no-console
+        console.error(err);
+  } else {
+    signer.setTransactionCount(txCount);
+  }
+  return signer;
+}
 
 export async function sendNativeCoin(
-  signer: Signer,
+  signer: NonceManager,
   toAddress: string,
   amountInBase: string,
   waitForTxToMine: boolean
@@ -18,7 +44,7 @@ export async function sendNativeCoin(
   // const estimate = await signer.estimateGas(tx);
 
   // tx.gasLimit = estimate;
-
+  signer = await refreshSignerNonce(signer, 'latest');
   const txResponse = await signer.sendTransaction(tx);
   if (waitForTxToMine) await txResponse.wait();
 }
@@ -67,4 +93,43 @@ export async function signTransaction(
     .toString()}], "mode": "${broadcastMode}" }`;
 
   return body;
+}
+
+export async function broadcastTxWithRetry(
+  signedTx: string,
+  apiUrl: string,
+  retries: number,
+  logger: Logger
+): Promise<any> {
+  let count = 0;
+  let res: any;
+  let prevErr = '';
+  while (count <= retries) {
+    res = await broadcast(signedTx, apiUrl);
+    // check response. If got error, retry
+    if (res.tx_response && res.tx_response.txhash) {
+      if (res.tx_response.code !== 0) {
+        prevErr = res.tx_response.raw_log;
+        // wait 2 secs before getting tx data
+        // got errors saying tx not found
+        await sleep(2000);
+        // query for the tx to get the logs
+        res = await getTransactionDetailsByHash(apiUrl, res.tx_response.txhash);
+        if (res.tx_response && res.tx_response.code !== 0) {
+          // add previous logs to raw_logs to get more info about the error
+          res.tx_response.raw_log = `${res.tx_response.raw_log}. ${prevErr}`;
+        }
+        if (res.code && res.code !== 0) {
+          res.error = `${prevErr}. ${res.error}`;
+        }
+      }
+      break;
+    }
+    logger.debug(
+      `could not broadcast tx successfully, retrying: code ${res.code}, message ${res.message}`
+    );
+    count++;
+    await sleep(2000); // wait 2 sec before retry
+  }
+  return res;
 }
