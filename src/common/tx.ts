@@ -109,25 +109,17 @@ export async function broadcastTxWithRetry(
 ): Promise<any> {
   let count = 0;
   let res: any;
-  let prevErr = '';
   while (count < retries) {
     res = await broadcast(signedTx, apiUrl);
     // check response. If got error, retry
     if (res.tx_response && res.tx_response.txhash) {
-      if (res.tx_response.code !== 0) {
-        prevErr = res.tx_response.raw_log;
+      // sometimes the tx goes thru but returns code != 0 and without logs
+      // for this case, we get the transactions details
+      if (res.tx_response.code !== 0 && !res.tx_response.raw_log) {
         // wait 2 secs before getting tx data
-        // got errors saying tx not found
         await sleep(2000);
         // query for the tx to get the logs
         res = await getTransactionDetailsByHash(apiUrl, res.tx_response.txhash);
-        if (res.tx_response && res.tx_response.code !== 0) {
-          // add previous logs to raw_logs to get more info about the error
-          res.tx_response.raw_log = `${res.tx_response.raw_log}. ${prevErr}`;
-        }
-        if (res.code && res.code !== 0) {
-          res.error = `${prevErr}. ${res.error}`;
-        }
       }
       break;
     }

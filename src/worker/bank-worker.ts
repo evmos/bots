@@ -41,7 +41,7 @@ export class BankWorker extends EvmosWorker {
       memo: ''
     };
     const txSimple = createTxMsgSend(ctx, {
-      destinationAddress: this.params.receiverAddress,
+      destinationAddress: this.params.receiverAddress as string,
       amount: this.amount.toString(),
       denom: 'aevmos'
     });

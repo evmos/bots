@@ -340,12 +340,13 @@ export class Orchestrator {
       this.logger
     );
 
+    // TODO retry updating nonce
     if (
       (res.code && res.code !== 0) ||
       (res.tx_response && res.tx_response.code !== 0)
     ) {
       this.logger.error(
-        `could not register pair after ${this.retries} retries: code ${
+        `could not register token pair: code ${
           res.code || res.tx_response.code
         }, message: ${res.message || res.tx_response.raw_log}`
       );
@@ -554,7 +555,7 @@ export class Orchestrator {
     // cant delegate to a default value, since validators change
     if (!('validator' in params)) {
       if (this.validators && this.validators.length) {
-        params['validator'] = this.validators[0];
+        params['validator'] = this.validators;
       } else {
         valid = false;
       }

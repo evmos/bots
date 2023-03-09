@@ -29,7 +29,7 @@ export interface Tx {
 }
 
 export interface EvmosWorkerParams extends IWorkerParams {
-  receiverAddress: string;
+  receiverAddress: string | string[];
   apiUrl: string;
   chainId: number;
   cosmosChainId: string;
