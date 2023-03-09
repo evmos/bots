@@ -1,7 +1,7 @@
 import {
   generateEndpointGetValidators,
   GetValidatorsResponse
-} from '@evmos/evmosjs/packages/provider/dist/rest/staking.js';
+} from '@evmos/provider/dist/rest/staking.js';
 import { query } from './query.js';
 
 export async function getValidatorsAddresses(url: string): Promise<string[]> {

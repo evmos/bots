@@ -1,4 +1,4 @@
-import { generateEndpointBroadcast } from '@evmos/evmosjs/packages/provider/dist/rest/broadcast.js';
+import { generateEndpointBroadcast } from 'evmosjs/packages/provider/dist/rest/broadcast.js';
 import { query } from './query.js';
 
 export async function getTransactionDetailsByHash(

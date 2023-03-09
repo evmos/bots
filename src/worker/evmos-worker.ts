@@ -1,18 +1,18 @@
 import { IWorker, IWorkerParams } from './iworker.js';
-import { Chain } from '@evmos/evmosjs/packages/transactions/dist/index.js';
+import { Chain } from 'evmosjs/packages/transactions/dist/index.js';
 import { broadcastTxWithRetry, signTransaction, sleep } from '../common/tx.js';
 import { getSenderWithRetry } from '../client/index.js';
 import { getExpectedNonce } from '../common/utils.js';
 
 export interface Tx {
   signDirect: {
-    body: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').TxBody;
-    authInfo: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').AuthInfo;
+    body: import('@evmos/proto/dist/proto/cosmos/transactions/tx.js').TxBody;
+    authInfo: import('@evmos/proto/dist/proto/cosmos/transactions/tx.js').AuthInfo;
     signBytes: string;
   };
   legacyAmino: {
-    body: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').TxBody;
-    authInfo: import('@evmos/evmosjs/packages/proto/dist/proto/cosmos/transactions/tx.js').AuthInfo;
+    body: import('@evmos/proto/dist/proto/cosmos/transactions/tx.js').TxBody;
+    authInfo: import('@evmos/proto/dist/proto/cosmos/transactions/tx.js').AuthInfo;
     signBytes: string;
   };
   eipToSign: {

@@ -1,7 +1,7 @@
 import {
   createTxMsgDelegate,
   TxContext
-} from '@evmos/evmosjs/packages/transactions/dist/index.js';
+} from 'evmosjs/packages/transactions/dist/index.js';
 import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
 import { randomInt } from 'crypto';
 import { delegate } from '../common/worker-const.js';

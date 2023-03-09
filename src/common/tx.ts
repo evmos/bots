@@ -1,7 +1,7 @@
 import { NonceManager } from '@ethersproject/experimental';
 import { TransactionRequest } from '@ethersproject/providers';
-import { createTxRaw } from '@evmos/evmosjs/packages/proto/dist/index.js';
-import { TxPayload } from '@evmos/evmosjs/packages/transactions/dist/index.js';
+import { createTxRaw } from '@evmos/proto/dist/index.js';
+import { TxPayload } from 'evmosjs/packages/transactions/dist/index.js';
 import { broadcast } from '@hanchon/evmos-ts-wallet';
 import { BigNumber, providers, Wallet } from 'ethers';
 import { arrayify, concat, splitSignature } from 'ethers/lib/utils.js';
