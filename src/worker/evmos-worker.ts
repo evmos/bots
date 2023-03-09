@@ -2,6 +2,7 @@ import { IWorker, IWorkerParams } from './iworker.js';
 import { Chain } from '@evmos/evmosjs/packages/transactions/dist/index.js';
 import { broadcastTxWithRetry, signTransaction, sleep } from '../common/tx.js';
 import { getSenderWithRetry } from '../client/index.js';
+import { getExpectedNonce } from '../common/utils.js';
 
 export interface Tx {
   signDirect: {
@@ -131,10 +132,11 @@ export abstract class EvmosWorker extends IWorker {
   async onFailedTx(error: any) {
     super.onFailedTx({ code: error.code, message: error.raw_log });
     if (error.raw_log.includes('account sequence mismatch')) {
-      const endPos = error.raw_log.indexOf(',', 36);
-      const expectedSequence: string = error.raw_log.substring(36, endPos);
-      this.sequence = parseInt(expectedSequence);
-      this._updateSequence = true;
+      const expectedSequence = getExpectedNonce(error.raw_log);
+      if (expectedSequence) {
+        this.sequence = expectedSequence;
+        this._updateSequence = true;
+      }
     }
   }
 
