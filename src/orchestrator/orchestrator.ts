@@ -330,17 +330,8 @@ export class Orchestrator {
     };
 
     this.logger.info('registering ERC20...');
+    const res = await this._submitProposal(ctx, proposal);
 
-    const sendProposal = createTxMsgSubmitProposal(ctx, proposal);
-    const signed = await signTransaction(this.wallet, sendProposal);
-    const res = await broadcastTxWithRetry(
-      signed,
-      this.params.apiUrl,
-      this.retries,
-      this.logger
-    );
-
-    // TODO retry updating nonce
     if (
       (res.code && res.code !== 0) ||
       (res.tx_response && res.tx_response.code !== 0)
@@ -357,42 +348,123 @@ export class Orchestrator {
     await sleep(3000);
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
 
-    // get updated sender (with updated sequence) and use it on tx context
-    ctx.sender = await getSender(this.wallet, this.params.apiUrl);
-
     const pos = res.tx_response.raw_log.indexOf('proposal_id');
     const endPos = res.tx_response.raw_log.indexOf('"}', pos);
-    const proposal_id: number = res.tx_response.raw_log.substring(
+    const proposalId: number = res.tx_response.raw_log.substring(
       pos + 22,
       endPos
     );
-    this.logger.info(`created RegisterERC20Proposal with id ${proposal_id}`);
+    this.logger.info(`created RegisterERC20Proposal with id ${proposalId}`);
 
-    const vote: MsgVoteParams = {
-      proposalId: proposal_id,
-      option: 1
-    };
-
-    this.logger.info('voting');
-    const voteProposal = createTxMsgVote(ctx, vote);
-
-    const signedVote = await signTransaction(this.wallet, voteProposal);
-    await broadcastTxWithRetry(
-      signedVote,
-      this.params.apiUrl,
-      this.retries,
-      this.logger
-    );
+    // get updated sender (with updated sequence) and use it on tx context
+    ctx.sender = await getSender(this.wallet, this.params.apiUrl);
+    await this._voteProposal(ctx, proposalId, 1);
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
 
     // no need to wait if number of workers is > 5
     // setting up the workers covers the time for the proposal to pass
     if (this.params.numberOfWorkers < 5) {
       this.logger.info('sleeping... wait proposal to pass');
-      await sleep(45000);
+      await sleep(35000);
       this.logger.info('awaken');
     }
     return true;
+  }
+
+  async _submitProposal(
+    ctx: TxContext,
+    proposal: MsgSubmitProposalParams
+  ): Promise<any> {
+    this.logger.info(`submitting proposal`);
+    let count = 0;
+    let nonceSuggestion: number | undefined;
+    let res: any;
+    while (count < this.retries) {
+      if (nonceSuggestion) {
+        ctx.sender.sequence = nonceSuggestion;
+      }
+      const sendProposal = createTxMsgSubmitProposal(ctx, proposal);
+      const signed = await signTransaction(this.wallet, sendProposal);
+      res = await broadcastTxWithRetry(
+        signed,
+        this.params.apiUrl,
+        this.retries,
+        this.logger
+      );
+
+      const code = res.code || res.tx_response.code;
+      if (code == 0) {
+        // transaction successful, break the loop
+        break;
+      } else {
+        const errMsg = res.message || res.tx_response.raw_log;
+        if (errMsg.includes('sequence mismatch')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            `nonce error while submitting proposal. retrying with refreshed nonce`
+          );
+          nonceSuggestion = getExpectedNonce(errMsg);
+        } else {
+          // another error happened, return the response
+          break;
+        }
+      }
+      await sleep(this.backoff);
+      count++;
+    }
+    return res;
+  }
+
+  async _voteProposal(
+    ctx: TxContext,
+    proposalId: number,
+    option: number
+  ): Promise<void> {
+    const vote: MsgVoteParams = {
+      proposalId,
+      option
+    };
+
+    this.logger.info(`voting proposal #${proposalId}`);
+    let count = 0;
+    let nonceSuggestion: number | undefined;
+    while (count < this.retries) {
+      if (nonceSuggestion) {
+        ctx.sender.sequence = nonceSuggestion;
+      }
+      const voteProposal = createTxMsgVote(ctx, vote);
+
+      const signedVote = await signTransaction(this.wallet, voteProposal);
+      const res = await broadcastTxWithRetry(
+        signedVote,
+        this.params.apiUrl,
+        this.retries,
+        this.logger
+      );
+
+      const code = res.code || res.tx_response.code;
+      if (code == 0) {
+        // transaction went thru, break the loop
+        break;
+      } else {
+        const errMsg = res.message || res.tx_response.raw_log;
+        if (errMsg.includes('sequence mismatch')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            `nonce error while voting proposal. retrying with refreshed nonce`
+          );
+          nonceSuggestion = getExpectedNonce(errMsg);
+        } else {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.error(
+            `error while voting proposal. code ${code}, message: ${errMsg}`
+          );
+          break;
+        }
+      }
+      await sleep(this.backoff);
+      count++;
+    }
   }
 
   async _deployGasConsumerContract(): Promise<string> {
