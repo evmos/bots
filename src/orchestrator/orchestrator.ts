@@ -34,7 +34,7 @@ import {
   TxContext
 } from 'evmosjs/packages/transactions/dist/index.js';
 import { getSender, LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
-import { createMsgRegisterERC20 } from 'evmosjs/packages/proto/dist/index.js';
+import { createMsgRegisterERC20 } from '@evmos/proto';
 import { getValidatorsAddresses } from '../client/index.js';
 import { getExpectedNonce } from '../common/utils.js';
 
