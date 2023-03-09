@@ -110,7 +110,7 @@ export async function broadcastTxWithRetry(
   let count = 0;
   let res: any;
   let prevErr = '';
-  while (count <= retries) {
+  while (count < retries) {
     res = await broadcast(signedTx, apiUrl);
     // check response. If got error, retry
     if (res.tx_response && res.tx_response.txhash) {

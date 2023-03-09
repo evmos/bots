@@ -70,7 +70,8 @@ export class Orchestrator {
   private isStopped = false;
   private readonly logger: Logger;
   private validators: string[] = [];
-  private maxRetries = 10;
+  private readonly retries = 10;
+  private readonly backoff = 2000; // retry backoff in millisecs
 
   private readonly successfulTxCounter = new Counter({
     name: 'num_success_tx',
@@ -250,7 +251,7 @@ export class Orchestrator {
     let count = 0;
     let err: Error | undefined;
     let nonceSuggestion: number | undefined;
-    while (count < this.maxRetries) {
+    while (count < this.retries) {
       try {
         await this._throwIfOrchestratorBalanceBelowThreshold();
         await sendNativeCoin(
@@ -271,7 +272,7 @@ export class Orchestrator {
         if (errStr.includes('nonce')) {
           // in case it is invalid nonce, retry with the refreshed signer
           this.logger.debug(
-            `nonce error while funding account. retrying with refreshed nonce, raw error: ${errStr}`
+            'nonce error while funding account. retrying with refreshed nonce'
           );
           nonceSuggestion = getExpectedNonce(errStr);
         } else {
@@ -280,7 +281,7 @@ export class Orchestrator {
       }
       count++;
       // wait a little before retry
-      await sleep(1000);
+      await sleep(this.backoff);
     }
 
     this.onFailedTx(err);
@@ -335,7 +336,7 @@ export class Orchestrator {
     const res = await broadcastTxWithRetry(
       signed,
       this.params.apiUrl,
-      this.maxRetries,
+      this.retries,
       this.logger
     );
 
@@ -344,7 +345,7 @@ export class Orchestrator {
       (res.tx_response && res.tx_response.code !== 0)
     ) {
       this.logger.error(
-        `could not register pair after ${this.maxRetries} retries: code ${
+        `could not register pair after ${this.retries} retries: code ${
           res.code || res.tx_response.code
         }, message: ${res.message || res.tx_response.raw_log}`
       );
@@ -378,7 +379,7 @@ export class Orchestrator {
     await broadcastTxWithRetry(
       signedVote,
       this.params.apiUrl,
-      this.maxRetries,
+      this.retries,
       this.logger
     );
     this.signer.setTransactionCount(await this.signer.getTransactionCount());
@@ -415,7 +416,7 @@ export class Orchestrator {
     let count = 0;
     let err: Error | undefined;
     let nonceSuggestion: number | undefined;
-    while (count < this.maxRetries) {
+    while (count < this.retries) {
       const factory = new ContractFactory(
         metadata.abi,
         metadata.bytecode,
@@ -440,7 +441,7 @@ export class Orchestrator {
         if (errStr.includes('nonce')) {
           // in case it is invalid nonce, retry with the refreshed signer
           this.logger.debug(
-            `nonce error while deploying ${contractType} contract. retrying with refreshed nonce, raw error: ${errStr}`
+            `nonce error while deploying ${contractType} contract. retrying with refreshed nonce`
           );
           nonceSuggestion = getExpectedNonce(errStr);
         } else {
@@ -449,7 +450,7 @@ export class Orchestrator {
       }
       count++;
       // wait a little before retry
-      await sleep(1000);
+      await sleep(this.backoff);
     }
     this.logger.error('error deploying contract. Exiting!', {
       error: err

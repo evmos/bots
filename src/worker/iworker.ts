@@ -56,12 +56,19 @@ export abstract class IWorker {
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onSuccessfulTx(receipt: providers.TransactionReceipt) {
+  // not using type providers.TransactionResponse here because the fields are
+  // named wrongly, e.g. the receipt returns the 'hash' field
+  // instead of 'transactionHash'
+  onSuccessfulTx(
+    receipt: providers.TransactionResponse | providers.TransactionReceipt
+  ) {
     this.successfulTxCounter.inc({
       worker: this.account.address
     });
     this.logger.debug('new successful tx', {
-      hash: receipt.transactionHash,
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      hash: receipt.transactionHash || receipt.hash,
       block: receipt.blockNumber
     });
   }

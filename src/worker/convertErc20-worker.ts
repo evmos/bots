@@ -5,9 +5,10 @@ import {
 import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
 import { converter } from '../common/worker-const.js';
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
-import { Contract } from 'ethers';
+import { Contract, providers } from 'ethers';
 import { NonceManager } from '@ethersproject/experimental';
-import { sleep } from '../common/tx.js';
+import { refreshSignerNonce, sleep } from '../common/tx.js';
+import { getExpectedNonce } from '../common/utils.js';
 
 export interface ERC20ConverterWorkerParams extends EvmosWorkerParams {
   contractAddress: string;
@@ -20,10 +21,8 @@ const CONTRACT_INTERFACES = [
 
 export class ConvertERC20Worker extends EvmosWorker {
   private readonly params: ERC20ConverterWorkerParams;
-  private readonly contract: Contract;
   private readonly deployer: NonceManager;
   private amount: number;
-  private ready: boolean;
   constructor(params: ERC20ConverterWorkerParams, extra: any) {
     super({
       account: params.account,
@@ -43,13 +42,6 @@ export class ConvertERC20Worker extends EvmosWorker {
     this.extraParams = extra;
     this.params.contractAddress = params.contractAddress;
     this.deployer = params.deployer;
-    this.contract = new Contract(
-      params.contractAddress,
-      CONTRACT_INTERFACES,
-      this.deployer
-    );
-    this.ready = false;
-
     this.amount = 1;
   }
 
@@ -58,10 +50,42 @@ export class ConvertERC20Worker extends EvmosWorker {
   }
 
   async action(): Promise<void> {
-    if (!this.ready) {
-      this.contract.mint(this.wallet.address, '100000');
-      await sleep(1000);
-      this.ready = true;
+    let nonceSuggestion: number | undefined;
+    let count = 0;
+    while (count < this.retries) {
+      try {
+        const contract = new Contract(
+          this.params.contractAddress,
+          CONTRACT_INTERFACES,
+          await refreshSignerNonce(
+            this.deployer,
+            'latest',
+            this.logger,
+            nonceSuggestion
+          )
+        );
+        const res: providers.TransactionResponse = await contract.mint(
+          this.wallet.address,
+          '100000'
+        );
+        await res.wait(1);
+        this.onSuccessfulTx(res);
+        break;
+      } catch (e) {
+        const errStr = JSON.stringify(e);
+        if (errStr.includes('nonce')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            'nonce error while minting ERC20. retrying with refreshed nonce'
+          );
+          nonceSuggestion = getExpectedNonce(errStr);
+        } else {
+          throw e;
+        }
+      }
+      count++;
+      // wait a little to retry tx
+      await sleep(this.backofff);
     }
     await super.action();
   }

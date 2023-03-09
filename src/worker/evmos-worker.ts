@@ -39,6 +39,7 @@ export abstract class EvmosWorker extends IWorker {
   protected readonly chainID: Chain;
   protected readonly apiUrl: string;
   protected readonly retries = 5;
+  protected readonly backofff = 1500; // retrt backoff in millisec
   protected _updateSequence = false;
   protected sequence: number;
   constructor(params: EvmosWorkerParams) {
@@ -68,10 +69,14 @@ export abstract class EvmosWorker extends IWorker {
 
   async onSuccessfulTx(receipt: any) {
     super.onSuccessfulTx(receipt);
-    this.logger.debug('new successful tx', {
-      hash: receipt.tx_response.txhash,
-      block: receipt.tx_response.height
-    });
+    // in case the receipt comes from an eth tx
+    // will not have the 'tx_response' field
+    if (receipt.tx_response) {
+      this.logger.debug('new successful tx', {
+        hash: receipt.tx_response.txhash,
+        block: receipt.tx_response.height
+      });
+    }
   }
 
   async prepareMessage() {

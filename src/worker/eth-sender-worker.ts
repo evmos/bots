@@ -50,7 +50,7 @@ export class EthSenderWorker extends IWorker {
 
   async onSuccessfulTx(receipt: any): Promise<void> {
     this.logger.debug('new successful tx', {
-      hash: receipt.transactionHash,
+      hash: receipt.transactionHash || receipt.hash,
       block: receipt.blockNumber,
       index: receipt.transactionIndex
     });
