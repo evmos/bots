@@ -43,6 +43,7 @@ export abstract class EvmosWorker extends IWorker {
   protected readonly backofff = 1500; // retrt backoff in millisec
   protected _updateSequence = false;
   protected sequence: number;
+  protected sender: any;
   constructor(params: EvmosWorkerParams) {
     super({
       account: params.account,
@@ -73,19 +74,21 @@ export abstract class EvmosWorker extends IWorker {
   }
 
   async prepareMessage() {
-    const sender = await getSenderWithRetry(
-      this.wallet,
-      this.apiUrl,
-      this.retries,
-      this.logger
-    );
+    if (!this.sender) {
+      this.sender = await getSenderWithRetry(
+        this.wallet,
+        this.apiUrl,
+        this.retries,
+        this.logger
+      );
+    }
     // fix the sequence in case there's a mismatch
     if (this._updateSequence) {
-      sender.sequence = this.sequence;
+      this.sender.sequence = this.sequence;
       this._updateSequence = false;
     }
-    const txSimple = this.createMessage(sender);
-    this.sequence = this.sequence + 1;
+    const txSimple = this.createMessage(this.sender);
+    this.sender.sequence++;
     return txSimple;
   }
 
@@ -105,18 +108,9 @@ export abstract class EvmosWorker extends IWorker {
       ) {
         this.onFailedTx(txResponse.tx_response);
       } else {
-        const sender = await getSenderWithRetry(
-          this.wallet,
-          this.apiUrl,
-          this.retries,
-          this.logger
-        );
-        this.sequence = sender.sequence;
         this.onFailedTx({ code: txResponse.code, raw_log: txResponse.message });
       }
     } catch (e: unknown) {
-      console.log('Catched error');
-      console.log(e);
       this.onFailedTx(e);
     }
   }
@@ -124,6 +118,7 @@ export abstract class EvmosWorker extends IWorker {
   async onFailedTx(error: any) {
     super.onFailedTx({ code: error.code, message: error.raw_log });
     if (error.raw_log.includes('account sequence mismatch')) {
+      this.logger.debug('invalid nonce (sequence), updated to the expected');
       const expectedSequence = getExpectedNonce(error.raw_log);
       if (expectedSequence) {
         this.sequence = expectedSequence;
