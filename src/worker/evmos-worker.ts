@@ -70,14 +70,6 @@ export abstract class EvmosWorker extends IWorker {
 
   async onSuccessfulTx(receipt: any) {
     super.onSuccessfulTx(receipt);
-    // in case the receipt comes from an eth tx
-    // will not have the 'tx_response' field
-    if (receipt.tx_response) {
-      this.logger.debug('new successful tx', {
-        hash: receipt.tx_response.txhash,
-        block: receipt.tx_response.height
-      });
-    }
   }
 
   async prepareMessage() {

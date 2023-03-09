@@ -53,24 +53,24 @@ export abstract class IWorker {
 
   abstract sendTransaction(): Promise<providers.TransactionResponse>;
 
-  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  // @ts-ignore
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   // not using type providers.TransactionResponse here because the fields are
   // named wrongly, e.g. the receipt returns the 'hash' field
-  // instead of 'transactionHash'
-  onSuccessfulTx(
-    receipt: providers.TransactionResponse | providers.TransactionReceipt
-  ) {
+  // instead of 'transactionHash' also can deal with cosmos tx too
+  onSuccessfulTx(receipt: any) {
     this.successfulTxCounter.inc({
       worker: this.account.address
     });
-    this.logger.debug('new successful tx', {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      hash: receipt.transactionHash || receipt.hash,
-      block: receipt.blockNumber
-    });
+    if (receipt.tx_response) {
+      this.logger.debug('new successful tx', {
+        hash: receipt.tx_response.txhash,
+        block: receipt.tx_response.height
+      });
+    } else {
+      this.logger.debug('new successful tx', {
+        hash: receipt.transactionHash || receipt.hash,
+        block: receipt.blockNumber
+      });
+    }
   }
 
   hasBeenRefunded() {
