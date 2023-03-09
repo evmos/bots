@@ -135,12 +135,12 @@ export abstract class EvmosWorker extends IWorker {
 
   async run(): Promise<void> {
     while (!this._isStopped) {
-      // delay to prevent failure due to block gas limit
-      // and stuck the main thread
-      await sleep(3000);
       if (!this._isLowOnFunds) {
         await this.action();
       }
+      // delay to prevent failure due to block gas limit
+      // and stuck the main thread
+      await sleep(3000);
     }
   }
 }

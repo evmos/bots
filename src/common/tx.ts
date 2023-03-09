@@ -12,8 +12,15 @@ import { getTransactionDetailsByHash } from '../client/index.js';
 export async function refreshSignerNonce(
   signer: NonceManager,
   blockTag: 'latest' | 'pending',
-  logger?: Logger
+  logger?: Logger,
+  suggestedNonce?: number
 ): Promise<NonceManager> {
+  // use suggested nonce if provided
+  if (typeof suggestedNonce === 'number') {
+    signer.setTransactionCount(suggestedNonce);
+    return signer;
+  }
+  // otherwise use the getTransactionCount function
   const [err, txCount] = await useTryAsync(() =>
     signer.getTransactionCount(blockTag)
   );
@@ -44,7 +51,6 @@ export async function sendNativeCoin(
   // const estimate = await signer.estimateGas(tx);
 
   // tx.gasLimit = estimate;
-  signer = await refreshSignerNonce(signer, 'latest');
   const txResponse = await signer.sendTransaction(tx);
   if (waitForTxToMine) await txResponse.wait();
 }

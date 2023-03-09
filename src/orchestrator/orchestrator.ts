@@ -2,6 +2,7 @@ import { BigNumber, ContractFactory, providers, Wallet } from 'ethers';
 import {
   broadcastTxWithRetry,
   getNativeCoinBalance,
+  refreshSignerNonce,
   sendNativeCoin,
   signTransaction,
   sleep
@@ -35,6 +36,7 @@ import {
 import { getSender, LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
 import { createMsgRegisterERC20 } from '@evmos/evmosjs/packages/proto/dist/index.js';
 import { getValidatorsAddresses } from '../client/index.js';
+import { getExpectedNonce } from '../common/utils.js';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -244,52 +246,56 @@ export class Orchestrator {
     waitForTxMine?: boolean
   ): Promise<boolean> {
     this.logger.info(`funding ${address}`);
-    try {
-      await this._throwIfOrchestratorBalanceBelowThreshold();
-      await sendNativeCoin(
-        this.signer,
-        address,
-        this.params.fundAllocationPerAccountBASE,
-        waitForTxMine == undefined ? this.params.waitForTxMine : waitForTxMine
-      );
-      return true;
-    } catch (e) {
-      this.onFailedTx(e);
-      this.logger.error('error funding address ', address);
-      return false;
+    // retry when failing due to invalid nonce
+    let count = 0;
+    let err: Error | undefined;
+    let nonceSuggestion: number | undefined;
+    while (count < this.maxRetries) {
+      try {
+        await this._throwIfOrchestratorBalanceBelowThreshold();
+        await sendNativeCoin(
+          await refreshSignerNonce(
+            this.signer,
+            'latest',
+            this.logger,
+            nonceSuggestion
+          ),
+          address,
+          this.params.fundAllocationPerAccountBASE,
+          waitForTxMine == undefined ? this.params.waitForTxMine : waitForTxMine
+        );
+        return true;
+      } catch (e: any) {
+        err = e;
+        const errStr = JSON.stringify(e);
+        if (errStr.includes('nonce')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            `nonce error while funding account. retrying with refreshed nonce, raw error: ${errStr}`
+          );
+          nonceSuggestion = getExpectedNonce(errStr);
+        } else {
+          break;
+        }
+      }
+      count++;
+      // wait a little before retry
+      await sleep(1000);
     }
+
+    this.onFailedTx(err);
+    this.logger.error('error funding address ', address);
+    return false;
   }
 
   async _deployERC20(): Promise<string> {
-    const metadata = JSON.parse(
-      fs
-        .readFileSync(
-          path.join(process.cwd(), './contracts/ERC20MinterBurnerDecimals.json')
-        )
-        .toString()
+    this.contracts.erc20Contract = await this._deployContract(
+      './contracts/ERC20MinterBurnerDecimals.json',
+      ['test', 'test', 18],
+      'erc20'
     );
-    const factory = new ContractFactory(
-      metadata.abi,
-      metadata.bytecode,
-      this.signer
-    );
-
-    try {
-      const contract = await factory.deploy('test', 'test', 18);
-      await contract.deployTransaction.wait(1);
-      this.logger.info('erc20 contract deployed', {
-        address: contract.address
-      });
-      this.contracts.erc20Contract = contract.address;
-
-      await this.registerPair(contract.address);
-      return contract.address;
-    } catch (e) {
-      this.logger.error('error deploying contract. Exiting!', {
-        error: e
-      });
-      throw e;
-    }
+    await this.registerPair(this.contracts.erc20Contract);
+    return this.contracts.erc20Contract;
   }
 
   async registerPair(erc20Contract: string): Promise<boolean> {
@@ -388,31 +394,67 @@ export class Orchestrator {
   }
 
   async _deployGasConsumerContract(): Promise<string> {
-    const metadata = JSON.parse(
-      fs
-        .readFileSync(path.join(process.cwd(), './contracts/GasConsumer.json'))
-        .toString()
+    this.contracts.gasConsumerContract = await this._deployContract(
+      './contracts/GasConsumer.json',
+      [],
+      'gas consumer'
     );
-    const factory = new ContractFactory(
-      metadata.abi,
-      metadata.bytecode,
-      this.signer
+    return this.contracts.gasConsumerContract;
+  }
+
+  async _deployContract(
+    contractPath: string,
+    args: any[],
+    contractType?: string
+  ): Promise<string> {
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), contractPath)).toString()
     );
 
-    try {
-      const contract = await factory.deploy();
-      await contract.deployTransaction.wait(1);
-      this.logger.info('gas consumer contract deployed', {
-        address: contract.address
-      });
-      this.contracts.gasConsumerContract = contract.address;
-      return contract.address;
-    } catch (e) {
-      this.logger.error('error deploying contract. Exiting!', {
-        error: e
-      });
-      throw e;
+    // retry in case of invalid nonce
+    let count = 0;
+    let err: Error | undefined;
+    let nonceSuggestion: number | undefined;
+    while (count < this.maxRetries) {
+      const factory = new ContractFactory(
+        metadata.abi,
+        metadata.bytecode,
+        await refreshSignerNonce(
+          this.signer,
+          'latest',
+          this.logger,
+          nonceSuggestion
+        )
+      );
+
+      try {
+        const contract = await factory.deploy(...args);
+        await contract.deployTransaction.wait(1);
+        this.logger.info(`${contractType} contract deployed`, {
+          address: contract.address
+        });
+        return contract.address;
+      } catch (e: any) {
+        err = e;
+        const errStr = JSON.stringify(e);
+        if (errStr.includes('nonce')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            `nonce error while deploying ${contractType} contract. retrying with refreshed nonce, raw error: ${errStr}`
+          );
+          nonceSuggestion = getExpectedNonce(errStr);
+        } else {
+          break;
+        }
+      }
+      count++;
+      // wait a little before retry
+      await sleep(1000);
     }
+    this.logger.error('error deploying contract. Exiting!', {
+      error: err
+    });
+    throw err;
   }
 
   async _throwIfOrchestratorBalanceBelowThreshold(): Promise<void> {

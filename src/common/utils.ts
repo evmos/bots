@@ -50,3 +50,12 @@ export function logLevelFromEnvOrDefault(key: string, def: LogLevel): LogLevel {
       return def;
   }
 }
+
+export function getExpectedNonce(error: string): number | undefined {
+  const expMsg = error.match(/expected\s\d+/g);
+  if (expMsg) {
+    const expectedNonce = expMsg[0].split(' ')[1];
+    return parseInt(expectedNonce);
+  }
+  return;
+}

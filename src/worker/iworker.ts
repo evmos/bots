@@ -76,15 +76,15 @@ export abstract class IWorker {
 
   async run(): Promise<void> {
     while (!this._isStopped) {
-      // delay to prevent failure due to block gas limit
-      // and stuck the main thread
-      await sleep(3000);
       if (!this._isLowOnFunds) {
         const [err, txResponse] = await useTryAsync(() =>
           this.sendTransaction()
         );
         if (err) {
           this.onFailedTx(err);
+          // delay to prevent failure due to block gas limit
+          // and stuck the main thread
+          await sleep(3000);
           continue;
         }
         // not awaiting here because we want to handle successful TX async
@@ -97,6 +97,9 @@ export abstract class IWorker {
             this.logger.error(err);
           });
       }
+      // delay to prevent failure due to block gas limit
+      // and stuck the main thread
+      await sleep(3000);
     }
   }
 

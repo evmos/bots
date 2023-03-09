@@ -6,7 +6,7 @@ export const ethSender = 'ethSender';
 export const workersToSpan = [
   bank,
   delegate,
-  gasConsumer,
   converter,
+  gasConsumer,
   ethSender
 ];
