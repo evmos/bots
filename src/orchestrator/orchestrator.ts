@@ -1,10 +1,9 @@
 import { BigNumber, ContractFactory, providers, Wallet } from 'ethers';
 import {
-  broadcastTxWithRetry,
+  sendCosmosTxWithNonceRefresher,
   getNativeCoinBalance,
   refreshSignerNonce,
   sendNativeCoin,
-  signTransaction,
   sleep
 } from '../common/tx.js';
 import { GasConsumerWorker } from '../worker/gas-consumer-worker.js';
@@ -376,43 +375,17 @@ export class Orchestrator {
     proposal: MsgSubmitProposalParams
   ): Promise<any> {
     this.logger.info(`submitting proposal`);
-    let count = 0;
-    let nonceSuggestion: number | undefined;
-    let res: any;
-    while (count < this.retries) {
-      if (nonceSuggestion) {
-        ctx.sender.sequence = nonceSuggestion;
-      }
-      const sendProposal = createTxMsgSubmitProposal(ctx, proposal);
-      const signed = await signTransaction(this.wallet, sendProposal);
-      res = await broadcastTxWithRetry(
-        signed,
-        this.params.apiUrl,
-        this.retries,
-        this.logger
-      );
-
-      const code = res.code || res.tx_response.code;
-      if (code == 0) {
-        // transaction successful, break the loop
-        break;
-      } else {
-        const errMsg = res.message || res.tx_response.raw_log;
-        if (errMsg.includes('sequence mismatch')) {
-          // in case it is invalid nonce, retry with the refreshed signer
-          this.logger.debug(
-            `nonce error while submitting proposal. retrying with refreshed nonce`
-          );
-          nonceSuggestion = getExpectedNonce(errMsg);
-        } else {
-          // another error happened, return the response
-          break;
-        }
-      }
-      await sleep(this.backoff);
-      count++;
-    }
-    return res;
+    return sendCosmosTxWithNonceRefresher(
+      ctx,
+      proposal,
+      createTxMsgSubmitProposal,
+      this.wallet,
+      this.params.apiUrl,
+      this.retries,
+      this.backoff,
+      this.logger,
+      'submitting proposal'
+    );
   }
 
   async _voteProposal(
@@ -426,45 +399,17 @@ export class Orchestrator {
     };
 
     this.logger.info(`voting proposal #${proposalId}`);
-    let count = 0;
-    let nonceSuggestion: number | undefined;
-    while (count < this.retries) {
-      if (nonceSuggestion) {
-        ctx.sender.sequence = nonceSuggestion;
-      }
-      const voteProposal = createTxMsgVote(ctx, vote);
-
-      const signedVote = await signTransaction(this.wallet, voteProposal);
-      const res = await broadcastTxWithRetry(
-        signedVote,
-        this.params.apiUrl,
-        this.retries,
-        this.logger
-      );
-
-      const code = res.code || res.tx_response.code;
-      if (code == 0) {
-        // transaction went thru, break the loop
-        break;
-      } else {
-        const errMsg = res.message || res.tx_response.raw_log;
-        if (errMsg.includes('sequence mismatch')) {
-          // in case it is invalid nonce, retry with the refreshed signer
-          this.logger.debug(
-            `nonce error while voting proposal. retrying with refreshed nonce`
-          );
-          nonceSuggestion = getExpectedNonce(errMsg);
-        } else {
-          // in case it is invalid nonce, retry with the refreshed signer
-          this.logger.error(
-            `error while voting proposal. code ${code}, message: ${errMsg}`
-          );
-          break;
-        }
-      }
-      await sleep(this.backoff);
-      count++;
-    }
+    await sendCosmosTxWithNonceRefresher(
+      ctx,
+      vote,
+      createTxMsgVote,
+      this.wallet,
+      this.params.apiUrl,
+      this.retries,
+      this.backoff,
+      this.logger,
+      'voting proposal'
+    );
   }
 
   async _deployGasConsumerContract(): Promise<string> {

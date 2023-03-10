@@ -1,13 +1,17 @@
 import { NonceManager } from '@ethersproject/experimental';
 import { TransactionRequest } from '@ethersproject/providers';
 import { createTxRaw } from '@evmos/proto';
-import { TxPayload } from 'evmosjs/packages/transactions/dist/index.js';
+import {
+  TxContext,
+  TxPayload
+} from 'evmosjs/packages/transactions/dist/index.js';
 import { broadcast } from '@hanchon/evmos-ts-wallet';
 import { BigNumber, providers, Wallet } from 'ethers';
 import { arrayify, concat, splitSignature } from 'ethers/lib/utils.js';
 import { useTryAsync } from 'no-try';
 import { Logger } from 'winston';
 import { getTransactionDetailsByHash } from '../client/index.js';
+import { getExpectedNonce } from './utils.js';
 
 export async function refreshSignerNonce(
   signer: NonceManager,
@@ -105,7 +109,7 @@ export async function broadcastTxWithRetry(
   signedTx: string,
   apiUrl: string,
   retries: number,
-  logger: Logger
+  logger?: Logger
 ): Promise<any> {
   let count = 0;
   let res: any;
@@ -123,11 +127,58 @@ export async function broadcastTxWithRetry(
       }
       break;
     }
-    logger.debug(
+    logger?.debug(
       `could not broadcast tx successfully, retrying: code ${res.code}, message ${res.message}`
     );
     count++;
     await sleep(2000); // wait 2 sec before retry
+  }
+  return res;
+}
+
+export async function sendCosmosTxWithNonceRefresher(
+  ctx: TxContext,
+  msgParams: any,
+  createMsg: (ctx: TxContext, msg: any) => TxPayload,
+  wallet: Wallet,
+  apiUrl: string,
+  retries: number,
+  backoff: number,
+  logger?: Logger,
+  logActionMsg?: string
+): Promise<any> {
+  let count = 0;
+  let nonceSuggestion: number | undefined;
+  let res: any;
+  while (count < retries) {
+    if (nonceSuggestion) {
+      ctx.sender.sequence = nonceSuggestion;
+    }
+    const msg = createMsg(ctx, msgParams);
+    const signed = await signTransaction(wallet, msg);
+    res = await broadcastTxWithRetry(signed, apiUrl, retries, logger);
+
+    const code = res.code || res.tx_response.code;
+    if (code == 0) {
+      // transaction successful, break the loop
+      break;
+    } else {
+      const errMsg = res.message || res.tx_response.raw_log;
+      if (errMsg.includes('sequence mismatch')) {
+        // in case it is invalid nonce, retry with the refreshed signer
+        logger?.debug(
+          `nonce error while ${
+            logActionMsg || 'broadcasting tx'
+          }. retrying with refreshed nonce`
+        );
+        nonceSuggestion = getExpectedNonce(errMsg);
+      } else {
+        // another error happened, return the response
+        break;
+      }
+    }
+    await sleep(backoff);
+    count++;
   }
   return res;
 }
