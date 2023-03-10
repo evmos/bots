@@ -146,6 +146,10 @@ export abstract class IWorker {
         });
         break;
     }
+    this.failedTxCounter.inc({
+      worker: this.account.address,
+      reason: error.code
+    });
   }
 
   async refreshSignerNonce(blockTag: 'latest' | 'pending') {

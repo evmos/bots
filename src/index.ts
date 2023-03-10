@@ -20,12 +20,6 @@ async function run() {
     process.exit(1);
   });
 
-  runServer({
-    rpcUrl: config.rpcUrl,
-    port: config.serverPort,
-    logger: logger
-  });
-
   const orchestrator = new Orchestrator({
     orchestratorAccountPrivKey: config.orchestratorAccountPrivateKey,
     numberOfWorkers: config.numberOfWorkers,
@@ -41,6 +35,7 @@ async function run() {
   });
 
   runServer({
+    rpcUrl: config.rpcUrl,
     port: config.serverPort,
     logger: logger,
     orchestrator: orchestrator
