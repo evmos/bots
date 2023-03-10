@@ -124,7 +124,7 @@ export abstract class IWorker {
         break;
       case etherLogger.errors.NONCE_EXPIRED:
         this.logger.error(etherLogger.errors.NONCE_EXPIRED);
-        this.refreshSignerNonce('latest');
+        await this.refreshSignerNonce('latest');
         break;
       case etherLogger.errors.SERVER_ERROR:
         // eslint-disable-next-line no-case-declarations
@@ -135,9 +135,9 @@ export abstract class IWorker {
         // for some reason our nonce expired cases are not being categorized
         // by ethers library as so
         if (errorMessage.includes('nonce')) {
-          this.refreshSignerNonce('latest');
+          await this.refreshSignerNonce('latest');
         } else if (errorMessage.includes('tx already in mempool')) {
-          this.refreshSignerNonce('pending');
+          await this.refreshSignerNonce('pending');
         }
         break;
       default:
@@ -146,10 +146,6 @@ export abstract class IWorker {
         });
         break;
     }
-    this.failedTxCounter.inc({
-      worker: this.account.address,
-      reason: error.code
-    });
   }
 
   async refreshSignerNonce(blockTag: 'latest' | 'pending') {

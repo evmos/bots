@@ -4,6 +4,7 @@ import { Logger } from '../common/logger.js';
 import { Orchestrator } from '../orchestrator/orchestrator.js';
 
 export interface ServerParams {
+  rpcUrl: string;
   port: number;
   logger: Logger;
   orchestrator: Orchestrator;
@@ -54,5 +55,6 @@ export async function runServer(params: ServerParams) {
   app.listen(port, '0.0.0.0', () => {
     // tslint:disable-next-line:no-console
     params.logger.info(`server started at http://0.0.0.0:${port}`);
+    params.logger.info(`bot querying rpcUrl ${params.rpcUrl}`)
   });
 }
