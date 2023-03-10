@@ -1,4 +1,4 @@
-import { LogLevel } from './logger';
+import { LogLevel } from './logger.js';
 
 export function stringFromEnvOrThrow(key: string): string {
   const value = process.env[key];
@@ -49,4 +49,13 @@ export function logLevelFromEnvOrDefault(key: string, def: LogLevel): LogLevel {
     default:
       return def;
   }
+}
+
+export function getExpectedNonce(error: string): number | undefined {
+  const expMsg = error.match(/expected\s\d+/g);
+  if (expMsg) {
+    const expectedNonce = expMsg[0].split(' ')[1];
+    return parseInt(expectedNonce);
+  }
+  return;
 }

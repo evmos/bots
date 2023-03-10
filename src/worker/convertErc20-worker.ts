@@ -1,27 +1,28 @@
-import { createTxMsgConvertERC20, createTxMsgSubmitProposal, Fee } from '@evmos/transactions'
-import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet'
-import { converter } from '../common/worker-const';
-import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker';
-import { Contract } from 'ethers';
+import {
+  createTxMsgConvertERC20,
+  TxContext
+} from 'evmosjs/packages/transactions/dist/index.js';
+import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
+import { converter } from '../common/worker-const.js';
+import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
+import { Contract, providers } from 'ethers';
 import { NonceManager } from '@ethersproject/experimental';
-import { sleep } from '../common/tx';
+import { refreshSignerNonce, sleep } from '../common/tx.js';
+import { getExpectedNonce } from '../common/utils.js';
 
 export interface ERC20ConverterWorkerParams extends EvmosWorkerParams {
   contractAddress: string;
-  deployer :NonceManager;
+  deployer: NonceManager;
 }
 
 const CONTRACT_INTERFACES = [
   'function mint(address to, uint256 amount) public'
 ];
 
-
 export class ConvertERC20Worker extends EvmosWorker {
   private readonly params: ERC20ConverterWorkerParams;
-  private readonly contract: Contract;
-  private readonly deployer : NonceManager;
-  private amount : number;
-  private ready : boolean;
+  private readonly deployer: NonceManager;
+  private amount: number;
   constructor(params: ERC20ConverterWorkerParams, extra: any) {
     super({
       account: params.account,
@@ -41,14 +42,7 @@ export class ConvertERC20Worker extends EvmosWorker {
     this.extraParams = extra;
     this.params.contractAddress = params.contractAddress;
     this.deployer = params.deployer;
-    this.contract = new Contract(
-      params.contractAddress,
-      CONTRACT_INTERFACES,
-      this.deployer
-    );
-    this.ready = false
-
-    this.amount = 1
+    this.amount = 1;
   }
 
   async onSuccessfulTx(receipt: any) {
@@ -56,25 +50,63 @@ export class ConvertERC20Worker extends EvmosWorker {
   }
 
   async action(): Promise<void> {
-    if (!this.ready){
-      this.contract.mint(this.wallet.address,'100000')
-      await sleep(1000);
-      this.ready = true;
+    let nonceSuggestion: number | undefined;
+    let count = 0;
+    while (count < this.retries) {
+      try {
+        const contract = new Contract(
+          this.params.contractAddress,
+          CONTRACT_INTERFACES,
+          await refreshSignerNonce(
+            this.deployer,
+            'latest',
+            this.logger,
+            nonceSuggestion
+          )
+        );
+        const res: providers.TransactionResponse = await contract.mint(
+          this.wallet.address,
+          '100000'
+        );
+        await res.wait(1);
+        this.onSuccessfulTx(res);
+        break;
+      } catch (e) {
+        const errStr = JSON.stringify(e);
+        if (errStr.includes('nonce')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            'nonce error while minting ERC20. retrying with refreshed nonce'
+          );
+          nonceSuggestion = getExpectedNonce(errStr);
+        } else {
+          throw e;
+        }
+      }
+      count++;
+      // wait a little to retry tx
+      await sleep(this.backofff);
     }
-    await super.action();    
+    await super.action();
   }
 
-  createMessage(sender: any) : Tx {
-    let fee = LOCALNET_FEE;
-    fee.gas = "2000000"
-    fee.amount = "2000"
-    const txSimple = createTxMsgConvertERC20(this.chainID, sender, fee, '', {
-      senderHexFormatted:this.wallet.address,
-      receiverEvmosFormatted: sender.accountAddress,
+  createMessage(sender: any): Tx {
+    const fee = LOCALNET_FEE;
+    fee.gas = '2000000';
+    fee.amount = '2000';
+    const ctx: TxContext = {
+      chain: this.chainID,
+      sender,
+      fee,
+      memo: ''
+    };
+    const txSimple = createTxMsgConvertERC20(ctx, {
+      senderHex: this.wallet.address,
+      receiverBech32: sender.accountAddress,
       amount: this.amount.toString(),
-      contract_address: this.params.contractAddress,
-    })
+      contractAddress: this.params.contractAddress
+    });
     this.amount += 1;
-    return txSimple
+    return txSimple;
   }
 }

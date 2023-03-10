@@ -1,7 +1,7 @@
-import { getConfig } from './bot.config';
-import { LoggerService } from './common/logger';
-import { Orchestrator } from './orchestrator/orchestrator';
-import { runServer } from './server/server';
+import { getConfig } from './bot.config.js';
+import { LoggerService } from './common/logger.js';
+import { Orchestrator } from './orchestrator/orchestrator.js';
+import { runServer } from './server/server.js';
 
 async function run() {
   const config = getConfig();
@@ -19,11 +19,10 @@ async function run() {
     logger.error(err);
     process.exit(1);
   });
-  
-  
+
   const orchestrator = new Orchestrator({
     orchestratorAccountPrivKey: config.orchestratorAccountPrivateKey,
-    numberOfWorkers: config.numberOfAccounts,
+    numberOfWorkers: config.numberOfWorkers,
     fundAllocationPerAccountBASE: config.fundsPerAccount,
     minFundsOrchestrator: config.orchestratorMinFunds,
     rpcUrl: config.rpcUrl,
@@ -32,9 +31,8 @@ async function run() {
     gasToConsumePerTx: config.gasToConsumePerTx,
     logger: logger,
     chainId: config.chainId,
-    cosmosChainId: config.cosmosChainId,
+    cosmosChainId: config.cosmosChainId
   });
-
 
   runServer({
     port: config.serverPort,
@@ -42,8 +40,6 @@ async function run() {
     orchestrator: orchestrator
   });
   await orchestrator.initialize();
-
-
 }
 
 run();
