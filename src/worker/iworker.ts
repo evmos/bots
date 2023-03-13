@@ -148,7 +148,7 @@ export abstract class IWorker {
     }
     this.failedTxCounter.inc({
       worker: this.account.address,
-      reason: error.code
+      reason: error.message
     });
   }
 
