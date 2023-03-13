@@ -26,21 +26,64 @@ The bot runs as follows:
 
 ### Environment variables
 
-| variable               | description                                                        | required | default                |
-| ---------------------- | ------------------------------------------------------------------ | -------- | ---------------------- |
-| RPC_URL                | evm rpc url to send tx                                             | yes      | N/A                    |
-| ORCH_PRIV_KEY          | orchestrator private key used to fund worker accounts              | yes      | N/A                    |
-| ORCH_MIN_FUNDS_BASE    | minimum balance that orchestrator must have. Exit otherwise        | no       | `10000000000000000000` |
-| NUMBER_OF_ACCOUNTS     | number of workers (accounts) that will send txs                    | no       | 10                     |
-| FUNDS_PER_ACCOUNT_BASE | fund amount for workers used initially and on insufficient balance | no       | `1000000000000000000`  |
-| WAIT_FOR_TX_MINE       | flag to determine whether to wait for tx to mine or not            | no       | false                  |
-| GAS_CONSUME_PER_TX     | how much gas to use in gas-consumer worker                         | no       | `100000`               |
-| LOG_LEVEL              | application logging level                                          | no       | info                   |
-| SERVER_PORT            | port to run server on. Used to expose metrics                      | no       | 8080                   |
+| variable               | description                                                        | required | default                 |
+| ---------------------- | ------------------------------------------------------------------ | -------- | ----------------------- |
+| ORCH_PRIV_KEY          | orchestrator private key used to fund worker accounts              | yes      | N/A                     |
+| RPC_URL                | evm rpc url to send tx                                             | no       | `http://localhost:8545` |
+| API_URL                | evm API server url to send queries and txs                         | no       | `http://localhost:1317` |
+| CHAIN_ID               | unique identifier of the chain that the bot will connect to        | no       | `evmos_9000-1`          |
+| ORCH_MIN_FUNDS_BASE    | minimum balance that orchestrator must have. Exit otherwise        | no       | `10000000000000000000`  |
+| NUMBER_OF_WORKERS      | number of workers (accounts) that will send txs                    | no       | 10                      |
+| FUNDS_PER_ACCOUNT_BASE | fund amount for workers used initially and on insufficient balance | no       | `1000000000000000000`   |
+| WAIT_FOR_TX_MINE       | flag to determine whether to wait for tx to mine or not            | no       | false                   |
+| GAS_CONSUME_PER_TX     | how much gas to use in gas-consumer worker                         | no       | `100000`                |
+| LOG_LEVEL              | application logging level                                          | no       | info                    |
+| SERVER_PORT            | port to run server on. Used to expose metrics                      | no       | 8080                    |
+
+### Setup
+
+Before running the bot make sure that the api is enabled.  
+On the `app.toml` file set the following configuration:
+
+```shell
+[api]
+
+# Enable defines if the API server should be enabled.
+enable = true
+
+# EnableUnsafeCORS defines if CORS should be enabled (unsafe - use it at your own risk).
+enabled-unsafe-cors = true
+```
+
+Also, it is important to increase the number of conections allowed by grpc.
+To achieve this, make sure to edit the `config.toml` file with the following:
+
+```shell
+# Maximum number of unique queries a given client can /subscribe to
+# If you're using GRPC (or Local RPC client) and /broadcast_tx_commit, set to
+# the estimated # maximum number of broadcast_tx_commit calls per block.
+max_subscriptions_per_client = 500
+```
+
+### Install dependencies
+
+Use `npm` to install all the corresponding dependencies:
+
+```bash
+npm install
+```
 
 ### Build
 
-#### Run natively
+Use `npm` to compile the code:
+
+```bash
+npm run build
+```
+
+The compiled files will be located inside the `dist` directory.
+
+### Run natively
 
 ```bash
 npm install
@@ -52,7 +95,15 @@ export ORCH_PRIV_KEY=YOUR_FUNDER_ACCOUNT_PRIV_KEY
 npx ts-node src/index.ts
 ```
 
-#### Run using docker
+Alternatively, you can build the project and run it using this command:
+
+```bash
+node ./dist/index.js
+```
+
+### Run using docker
+
+To run the bot inside a docker container, use the following commands:
 
 ```bash
 docker build -t tx-bot-dev -f Dockerfile.dev .
