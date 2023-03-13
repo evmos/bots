@@ -122,3 +122,24 @@ To run the bot inside a docker container, use the following commands:
 docker build -t tx-bot-dev -f Dockerfile.dev .
 docker run -it --init --rm --network=host -e CHAIN_ID_NUMBER=9000 -e CHAIN_ID=evmos_9000-1 -e API_URL=http://evm-rpc-url:1317 -e RPC_URL=http://localhost:8545 -e ORCH_PRIV_KEY=YOUR_FUNDER_ACCOUNT_PRIV_KEY tx-bot-dev
 ```
+
+### Bot API
+
+Apart from the possibility to define the desired number of workers using the
+`NUMBER_OF_WORKERS` environment variable, it is possible to create new workers or 
+delete existing ones using the bot API.
+
+For creation use the `add_worker` endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:8080/add_worker -H 'Content-Type: application/json' -d '{"worker":"converter", "params":{""}}'
+```
+
+For deletion of all workers of the same type use the `delete_worker` endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:8080/delete_worker -H 'Content-Type: application/json' -d '{"worker":"converter"}'
+```
+
+>**NOTE**: when using a different port for the API when passing the `SERVER_PORT` env variable
+>make sure you're using that port for these requests instead of the default one (`8080`).
