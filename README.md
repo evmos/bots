@@ -9,8 +9,21 @@ The bot runs as follows:
 1.  Check orchestrator balance. Exit if balance below threshold.
 2.  Deploy gas consumer contract.
 3.  Create worker accounts and fund them.
-4.  Run workers. Workers keep calling gas consumer contract's `go` method which is a loop that exits when gas used reaches a threshold.
+4.  Run workers of different types. Find more details about these on the next section.
 5.  On insufficient funds, refund workers.
+
+#### Worker types
+
+This repository supports 5 worker types:
+
+- **Gas consumer**: keeps calling a gas consumer contract's `go` method which is a loop that exits when gas used reaches a threshold.
+- **Bank worker**: continuously sends funds to another account using the `MsgSend` message from the `bank` module.
+- **ERC-20 converter**: keeps sending `MsgConvertERC20` messages to convert ERC-20 tokens to IBC coins.
+  The corresponding token pair is registered during the bot initialization.
+- **ETH sender**: continuously sends funds to another account using the [`ethers`](https://docs.ethers.org/v6/) library.
+- **Delegator**: stakes (delegates) part of its balance to a validator available on the network.
+
+Workers are spanned on a round-robin fashion.
 
 ### Features
 
