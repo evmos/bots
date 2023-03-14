@@ -2,8 +2,7 @@ import {
   createTxMsgConvertERC20,
   TxContext
 } from 'evmosjs/packages/transactions/dist/index.js';
-import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
-import { converter } from '../common/worker-const.js';
+import { converter, defaultFees } from '../common/worker-const.js';
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
 import { Contract, providers } from 'ethers';
 import { NonceManager } from '@ethersproject/experimental';
@@ -91,13 +90,10 @@ export class ConvertERC20Worker extends EvmosWorker {
   }
 
   createMessage(sender: any): Tx {
-    const fee = LOCALNET_FEE;
-    fee.gas = '2000000';
-    fee.amount = '2000';
     const ctx: TxContext = {
       chain: this.chainID,
       sender,
-      fee,
+      fee: defaultFees,
       memo: ''
     };
     const txSimple = createTxMsgConvertERC20(ctx, {

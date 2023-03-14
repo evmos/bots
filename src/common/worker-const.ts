@@ -1,3 +1,5 @@
+import { Fee } from 'evmosjs/packages/transactions/dist/messages/common.js';
+
 export const bank = 'bank';
 export const delegate = 'delegate';
 export const gasConsumer = 'gas-consumer';
@@ -10,3 +12,8 @@ export const workersToSpan = [
   gasConsumer,
   ethSender
 ];
+export const defaultFees: Fee = {
+  denom: 'aevmos',
+  amount: '10000000000000',
+  gas: '2000000'
+};

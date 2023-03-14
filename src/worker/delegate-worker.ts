@@ -2,9 +2,8 @@ import {
   createTxMsgDelegate,
   TxContext
 } from 'evmosjs/packages/transactions/dist/index.js';
-import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
 import { randomInt } from 'crypto';
-import { delegate } from '../common/worker-const.js';
+import { defaultFees, delegate } from '../common/worker-const.js';
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
 
 export class DelegateWorker extends EvmosWorker {
@@ -38,7 +37,7 @@ export class DelegateWorker extends EvmosWorker {
     const ctx: TxContext = {
       chain: this.chainID,
       sender,
-      fee: LOCALNET_FEE,
+      fee: defaultFees,
       memo: ''
     };
     // randomnly delegate to available validators

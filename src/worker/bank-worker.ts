@@ -2,8 +2,7 @@ import {
   createTxMsgSend,
   TxContext
 } from 'evmosjs/packages/transactions/dist/index.js';
-import { LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
-import { bank } from '../common/worker-const.js';
+import { bank, defaultFees } from '../common/worker-const.js';
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
 
 export class BankWorker extends EvmosWorker {
@@ -37,7 +36,7 @@ export class BankWorker extends EvmosWorker {
     const ctx: TxContext = {
       chain: this.chainID,
       sender,
-      fee: LOCALNET_FEE,
+      fee: defaultFees,
       memo: ''
     };
     const txSimple = createTxMsgSend(ctx, {

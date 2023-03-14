@@ -20,6 +20,7 @@ import { EthSenderWorker } from '../worker/eth-sender-worker.js';
 import {
   bank,
   converter,
+  defaultFees,
   delegate,
   ethSender,
   gasConsumer,
@@ -32,7 +33,7 @@ import {
   MsgVoteParams,
   TxContext
 } from 'evmosjs/packages/transactions/dist/index.js';
-import { getSender, LOCALNET_FEE } from '@hanchon/evmos-ts-wallet';
+import { getSender } from '@hanchon/evmos-ts-wallet';
 import { createMsgRegisterERC20 } from '@evmos/proto';
 import { getValidatorsAddresses } from '../client/index.js';
 import { getExpectedNonce } from '../common/utils.js';
@@ -220,7 +221,8 @@ export class Orchestrator {
   async _initializeContracts() {
     this.logger.info('initializing contracts');
     await this._deployGasConsumerContract();
-    await this._deployERC20();
+    const contractAddress = await this._deployERC20();
+    await this.registerPair(contractAddress);
   }
 
   async _initializeRefunder() {
@@ -294,7 +296,6 @@ export class Orchestrator {
       ['test', 'test', 18],
       'erc20'
     );
-    await this.registerPair(this.contracts.erc20Contract);
     return this.contracts.erc20Contract;
   }
 
@@ -317,14 +318,10 @@ export class Orchestrator {
       cosmosChainId: this.params.cosmosChainId
     };
 
-    const fee = LOCALNET_FEE;
-    fee.gas = '2000000';
-    fee.amount = '2000';
-
     const ctx: TxContext = {
       chain,
       sender,
-      fee,
+      fee: defaultFees,
       memo: ''
     };
 
@@ -606,6 +603,12 @@ export class Orchestrator {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     extraParams: any
   ): Promise<IWorker> {
+    let contractAddress = this.contracts.erc20Contract;
+    // if ERC20 not deployed already, deploy and register the pair
+    if (!contractAddress) {
+      contractAddress = await this._deployERC20();
+      await this.registerPair(contractAddress);
+    }
     const worker = new ConvertERC20Worker(
       {
         account: {
@@ -613,9 +616,7 @@ export class Orchestrator {
           address: workerWallet.address
         },
         provider: this.provider,
-        contractAddress: this.contracts.erc20Contract
-          ? this.contracts.erc20Contract
-          : await this._deployERC20(),
+        contractAddress,
         successfulTxCounter: this.successfulTxCounter,
         failedTxCounter: this.failedTxCounter,
         onInsufficientFunds: async () => {
