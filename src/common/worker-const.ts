@@ -14,6 +14,6 @@ export const workersToSpan = [
 ];
 export const defaultFees: Fee = {
   denom: 'aevmos',
-  amount: '10000000000000',
+  amount: '1000000000000000',
   gas: '2000000'
 };
