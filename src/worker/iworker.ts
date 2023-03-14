@@ -1,9 +1,9 @@
 import { providers, Wallet } from 'ethers';
 import { Counter, Gauge } from 'prom-client';
 import { NonceManager } from '@ethersproject/experimental';
-import { Logger } from '../common/logger';
-import { sleep } from '../common/tx';
-import { Logger as etherLogger } from 'ethers/lib/utils';
+import { Logger } from '../common/logger.js';
+import { refreshSignerNonce, sleep } from '../common/tx.js';
+import { Logger as etherLogger } from 'ethers/lib/utils.js';
 import { useTryAsync } from 'no-try';
 
 export interface Account {
@@ -27,18 +27,20 @@ export abstract class IWorker {
   public readonly account: Account;
   private readonly successfulTxCounter: Counter<string>;
   private readonly failedTxCounter: Counter<string>;
-  private readonly successfulTxFeeGauge: Gauge<string>;
-  protected readonly signer: NonceManager;
+  protected readonly successfulTxFeeGauge: Gauge<string>;
+  protected signer: NonceManager;
   private readonly onInsufficientFunds: OnInsufficientFundsCallback;
-  private readonly logger: Logger;
+  protected readonly logger: Logger;
   protected _isLowOnFunds = false;
   protected _isStopped = false;
+  protected wallet: Wallet;
+  public type: string;
+  public extraParams: any;
 
   constructor(params: IWorkerParams) {
     this.account = params.account;
-    this.signer = new NonceManager(
-      new Wallet(params.account.privateKey, params.provider)
-    );
+    this.wallet = new Wallet(params.account.privateKey, params.provider);
+    this.signer = new NonceManager(this.wallet);
     this.successfulTxCounter = params.successfulTxCounter;
     this.failedTxCounter = params.failedTxCounter;
     this.successfulTxFeeGauge = params.successfulTxFeeGauge;
@@ -46,25 +48,29 @@ export abstract class IWorker {
     this.logger = params.logger.child({
       workerAddr: params.account.address
     });
+    this.type = 'invalid';
   }
 
   abstract sendTransaction(): Promise<providers.TransactionResponse>;
 
-  onSuccessfulTx(receipt: providers.TransactionReceipt) {
-    this.logger.debug('new successful tx', {
-      hash: receipt.transactionHash,
-      block: receipt.blockNumber,
-      index: receipt.transactionIndex
-    });
+  // not using type providers.TransactionResponse here because the fields are
+  // named wrongly, e.g. the receipt returns the 'hash' field
+  // instead of 'transactionHash' also can deal with cosmos tx too
+  onSuccessfulTx(receipt: any) {
     this.successfulTxCounter.inc({
       worker: this.account.address
     });
-    this.successfulTxFeeGauge.set(
-      {
-        worker: this.account.address
-      },
-      receipt.gasUsed.toNumber()
-    );
+    if (receipt.tx_response) {
+      this.logger.debug('new successful tx', {
+        hash: receipt.tx_response.txhash,
+        block: receipt.tx_response.height
+      });
+    } else {
+      this.logger.debug('new successful tx', {
+        hash: receipt.transactionHash || receipt.hash,
+        block: receipt.blockNumber
+      });
+    }
   }
 
   hasBeenRefunded() {
@@ -82,36 +88,34 @@ export abstract class IWorker {
           this.sendTransaction()
         );
         if (err) {
-          await this.onFailedTx(err);
+          this.onFailedTx(err);
+          // delay to prevent failure due to block gas limit
+          // and stuck the main thread
+          await sleep(3000);
           continue;
         }
-        // not awaiting here because we want to handle succesful TX async
+        // not awaiting here because we want to handle successful TX async
         txResponse
           .wait()
           .then((txReceipt: providers.TransactionReceipt) => {
             this.onSuccessfulTx(txReceipt);
           })
-          .catch((err) => {
+          .catch((err: any) => {
             this.logger.error(err);
           });
-      } else {
-        // delay to prevent loop from running synchronously
-        await sleep(1000);
       }
+      // delay to prevent failure due to block gas limit
+      // and stuck the main thread
+      await sleep(3000);
     }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async onFailedTx(error: any) {
-    this.failedTxCounter.inc({
-      worker: this.account.address,
-      reason: error.code
-    });
-    await this.handleFailedTxRecovery(error);
-  }
-
-  // handle recovery for every error case
-  async handleFailedTxRecovery(error: any) {
+    if (error == undefined) {
+      error = { code: -1 };
+    }
+    // handle recovery for every case
     switch (error.code) {
       case etherLogger.errors.INSUFFICIENT_FUNDS:
         this.logger.warn('insufficient funds. need refunding');
@@ -123,6 +127,7 @@ export abstract class IWorker {
         await this.refreshSignerNonce('latest');
         break;
       case etherLogger.errors.SERVER_ERROR:
+        // eslint-disable-next-line no-case-declarations
         const errorMessage = JSON.parse(error.body)['error']['message'];
         this.logger.error(etherLogger.errors.SERVER_ERROR, {
           error: errorMessage
@@ -141,18 +146,13 @@ export abstract class IWorker {
         });
         break;
     }
+    this.failedTxCounter.inc({
+      worker: this.account.address,
+      reason: error.message
+    });
   }
 
   async refreshSignerNonce(blockTag: 'latest' | 'pending') {
-    const [err, txCount] = await useTryAsync(() =>
-      this.signer.getTransactionCount(blockTag)
-    );
-    if (err) {
-      this.logger.error('failed to get account nonce', {
-        error: err
-      });
-    } else {
-      this.signer.setTransactionCount(txCount);
-    }
+    this.signer = await refreshSignerNonce(this.signer, blockTag, this.logger);
   }
 }

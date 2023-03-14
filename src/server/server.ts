@@ -1,16 +1,20 @@
 import express from 'express';
 import promBundle from 'express-prom-bundle';
-import { Logger } from '../common/logger';
+import { Logger } from '../common/logger.js';
+import { Orchestrator } from '../orchestrator/orchestrator.js';
 
 export interface ServerParams {
   rpcUrl: string;
   port: number;
   logger: Logger;
+  orchestrator: Orchestrator;
 }
 
 export async function runServer(params: ServerParams) {
   const app = express();
   const port = params.port; // default port to listen
+  app.use(express.json());
+
   const metricsMiddleware = promBundle({
     includeMethod: true,
     includePath: true,
@@ -20,9 +24,29 @@ export async function runServer(params: ServerParams) {
       application: 'tx_bot'
     },
     promClient: {
-      collectDefaultMetrics: {
-      }
+      collectDefaultMetrics: {}
     }
+  });
+
+  app.post('/add_worker', (req, res) => {
+    console.log(req.body);
+    let worker = req.body['worker'];
+    if (!('worker' in req.body)) {
+      worker = 'default';
+    }
+    const workerParams = req.body['params'];
+    params.orchestrator.addWorker(worker, workerParams);
+    res.send('Added worker ' + worker + '\n');
+  });
+
+  app.post('/delete_worker', (req, res) => {
+    console.log(req.body);
+    let worker = req.body['worker'];
+    if (!('worker' in req.body)) {
+      worker = 'default';
+    }
+    params.orchestrator.killWorker(worker);
+    res.send('Deleted worker ' + worker + '\n');
   });
 
   app.use(metricsMiddleware);

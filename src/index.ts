@@ -1,7 +1,7 @@
-import { getConfig } from './bot.config';
-import { LoggerService } from './common/logger';
-import { Orchestrator } from './orchestrator/orchestrator';
-import { runServer } from './server/server';
+import { getConfig } from './bot.config.js';
+import { LoggerService } from './common/logger.js';
+import { Orchestrator } from './orchestrator/orchestrator.js';
+import { runServer } from './server/server.js';
 
 async function run() {
   const config = getConfig();
@@ -20,24 +20,26 @@ async function run() {
     process.exit(1);
   });
 
+  const orchestrator = new Orchestrator({
+    orchestratorAccountPrivKey: config.orchestratorAccountPrivateKey,
+    numberOfWorkers: config.numberOfWorkers,
+    fundAllocationPerAccountBASE: config.fundsPerAccount,
+    minFundsOrchestrator: config.orchestratorMinFunds,
+    rpcUrl: config.rpcUrl,
+    apiUrl: config.apiUrl,
+    waitForTxMine: config.waitForTxToMine,
+    gasToConsumePerTx: config.gasToConsumePerTx,
+    logger: logger,
+    chainId: config.chainId,
+    cosmosChainId: config.cosmosChainId
+  });
 
   runServer({
     rpcUrl: config.rpcUrl,
     port: config.serverPort,
-    logger: logger
+    logger: logger,
+    orchestrator: orchestrator
   });
-
-  const orchestrator = new Orchestrator({
-    orchestratorAccountPrivKey: config.orchestratorAccountPrivateKey,
-    numberOfWorkers: config.numberOfAccounts,
-    fundAllocationPerAccountBASE: config.fundsPerAccount,
-    minFundsOrchestrator: config.orchestratorMinFunds,
-    rpcUrl: config.rpcUrl,
-    waitForTxMine: config.waitForTxToMine,
-    gasToConsumePerTx: config.gasToConsumePerTx,
-    logger: logger
-  });
-
   await orchestrator.initialize();
 }
 

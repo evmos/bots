@@ -1,12 +1,42 @@
 import { BigNumber, ContractFactory, providers, Wallet } from 'ethers';
-import { getNativeCoinBalance, sendNativeCoin, sleep } from '../common/tx';
-import { GasConsumerWorker } from '../worker/gas-consumer-worker';
-import { IWorker } from '../worker/iworker';
+import {
+  sendCosmosTxWithNonceRefresher,
+  getNativeCoinBalance,
+  refreshSignerNonce,
+  sendNativeCoin,
+  sleep
+} from '../common/tx.js';
+import { GasConsumerWorker } from '../worker/gas-consumer-worker.js';
+import { IWorker } from '../worker/iworker.js';
 import fs from 'fs';
 import path from 'path';
 import { NonceManager } from '@ethersproject/experimental';
 import { Counter, Gauge } from 'prom-client';
-import { Logger } from '../common/logger';
+import { Logger } from '../common/logger.js';
+import { BankWorker } from '../worker/bank-worker.js';
+import { DelegateWorker } from '../worker/delegate-worker.js';
+import { ConvertERC20Worker } from '../worker/convertErc20-worker.js';
+import { EthSenderWorker } from '../worker/eth-sender-worker.js';
+import {
+  bank,
+  converter,
+  defaultFees,
+  delegate,
+  ethSender,
+  gasConsumer,
+  workersToSpan
+} from '../common/worker-const.js';
+import {
+  createTxMsgSubmitProposal,
+  MsgSubmitProposalParams,
+  createTxMsgVote,
+  MsgVoteParams,
+  TxContext
+} from 'evmosjs/packages/transactions/dist/index.js';
+import { getSender } from '@hanchon/evmos-ts-wallet';
+import { createMsgRegisterERC20 } from '@evmos/proto';
+import { getValidatorsAddresses } from '../client/index.js';
+import { getExpectedNonce } from '../common/utils.js';
 
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
@@ -17,10 +47,14 @@ export interface OrchestratorParams {
   waitForTxMine: boolean;
   gasToConsumePerTx: string;
   logger: Logger;
+  chainId: number;
+  cosmosChainId: string;
+  apiUrl: string;
 }
 
 export interface Contracts {
   gasConsumerContract?: string;
+  erc20Contract?: string;
 }
 
 export class Orchestrator {
@@ -28,12 +62,17 @@ export class Orchestrator {
   private workers: IWorker[] = [];
   private provider: providers.Provider;
   private readonly signer: NonceManager;
+  private wallet: Wallet;
   private checkBalanceInterval?: NodeJS.Timer;
   private readonly contracts: Contracts = {};
   private isInitiliazing = true;
   private toFundQueue: IWorker[] = [];
   private isStopped = false;
   private readonly logger: Logger;
+  private validators: string[] = [];
+  private readonly retries = 10;
+  private readonly backoff = 2000; // retry backoff in millisecs
+
   private readonly successfulTxCounter = new Counter({
     name: 'num_success_tx',
     help: 'counter for number of successful txs',
@@ -52,15 +91,18 @@ export class Orchestrator {
 
   constructor(params: OrchestratorParams) {
     this.params = params;
-    this.provider = new providers.JsonRpcProvider(params.rpcUrl);
-    this.signer = new NonceManager(
-      new Wallet(params.orchestratorAccountPrivKey, this.provider)
-    );
+    this.provider = new providers.JsonRpcProvider({
+      url: params.rpcUrl,
+      timeout: 5_000 // 5s
+    });
+    this.wallet = new Wallet(params.orchestratorAccountPrivKey, this.provider);
+    this.signer = new NonceManager(this.wallet);
     this.logger = params.logger;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async onFailedTx(error: any) {
+    this.signer.setTransactionCount(await this.signer.getTransactionCount());
     try {
       let errorString = error.code;
 
@@ -96,9 +138,11 @@ export class Orchestrator {
   async initialize() {
     this.isInitiliazing = true;
     this.logger.info('initializing orchestrator');
+    this.validators = await getValidatorsAddresses(this.params.apiUrl);
     await this._throwIfOrchestratorBalanceBelowThreshold();
     await this._initializeContracts();
     await this._initializeWorkers();
+    this._startWorkers();
     this._initializeRefunder();
     this.isInitiliazing = false;
     return this;
@@ -112,45 +156,73 @@ export class Orchestrator {
   }
 
   async _initializeWorkers() {
-    this.logger.info('initializing workers');
+    this.logger.info(`initializing ${this.params.numberOfWorkers} workers`);
+    const typesCount = workersToSpan.length;
     for (let i = 0; i < this.params.numberOfWorkers; i++) {
-      // create account
-      const workerWallet = Wallet.createRandom();
+      const workerType = workersToSpan[i % typesCount];
+      await this.addWorker(workerType, {});
+    }
+  }
 
-      // fund account
-      await this._fundAccount(workerWallet.address, true);
+  async addWorker(type: string, params: any) {
+    const workerWallet = Wallet.createRandom();
 
-      // create worker
-      const worker = new GasConsumerWorker({
-        account: {
-          privateKey: workerWallet.privateKey,
-          address: workerWallet.address
-        },
-        provider: this.provider,
-        contractAddress: this.contracts.gasConsumerContract
-          ? this.contracts.gasConsumerContract
-          : await this._deployGasConsumerContract(),
-        gasToConsumePerTX: this.params.gasToConsumePerTx,
-        successfulTxCounter: this.successfulTxCounter,
-        failedTxCounter: this.failedTxCounter,
-        onInsufficientFunds:() => {
-          this.toFundQueue.push(worker);
-        },
-        successfulTxFeeGauge: this.successfulTxFeeGauge,
-        logger: this.logger
-      });
+    // fund account
+    await this._fundAccount(workerWallet.address, true);
+    let worker: IWorker;
+    let valid = true;
+    switch (type) {
+      case bank:
+        worker = this.createBankWorker(workerWallet, params);
+        break;
+      case delegate:
+        [worker, valid] = this.createDelegateWorker(workerWallet, params);
+        break;
+      case gasConsumer:
+        worker = await this.createGasConsumerWorker(workerWallet, params);
+        break;
+      case converter:
+        worker = await this.createErc20ConverterWorker(workerWallet, params);
+        break;
+      case ethSender:
+        worker = this.createEthSenderWorker(workerWallet, params);
+        break;
+      default:
+        worker = this.createBankWorker(workerWallet, params);
+        break;
+    }
 
-      // start worker
+    if (!valid) {
+      return;
+    }
+
+    // add worker to internal list
+    this.logger.info(`created ${type} worker @ ${workerWallet.address}`);
+    this.workers.push(worker);
+  }
+
+  _startWorkers() {
+    this.logger.info('starting workers');
+    for (const worker of this.workers) {
+      this.logger.debug(`start worker @ ${worker.account.address}`);
       worker.run();
+    }
+  }
 
-      // add worker to internal list
-      this.workers.push();
+  killWorker(type: string) {
+    for (let i = 0; i < this.workers.length; i++) {
+      if (this.workers[i].type == type) {
+        this.workers[i].stop();
+        return;
+      }
     }
   }
 
   async _initializeContracts() {
     this.logger.info('initializing contracts');
     await this._deployGasConsumerContract();
+    const contractAddress = await this._deployERC20();
+    await this.registerPair(contractAddress);
   }
 
   async _initializeRefunder() {
@@ -159,15 +231,15 @@ export class Orchestrator {
       if (!this.isInitiliazing && this.toFundQueue.length > 0) {
         while (this.toFundQueue.length > 0) {
           const worker = this.toFundQueue.shift();
+          this.logger.debug(`refunding account ${worker?.account.address}`);
           if (worker) {
-            await this._fundAccount(worker.account.address);
+            await this._fundAccount(worker.account.address, true);
             worker.hasBeenRefunded();
           }
         }
-      } else {
-        // sleep to prevent loop from running syncrhonously
-        await sleep(1000);
       }
+      // sleep to prevent loop from running synchronously
+      await sleep(3000);
     }
   }
 
@@ -176,48 +248,229 @@ export class Orchestrator {
     waitForTxMine?: boolean
   ): Promise<boolean> {
     this.logger.info(`funding ${address}`);
-    try {
-      await this._throwIfOrchestratorBalanceBelowThreshold();
-      await sendNativeCoin(
-        this.signer,
-        address,
-        this.params.fundAllocationPerAccountBASE,
-        waitForTxMine == undefined ? this.params.waitForTxMine : waitForTxMine
+    // retry when failing due to invalid nonce
+    let count = 0;
+    let err: Error | undefined;
+    let nonceSuggestion: number | undefined;
+    while (count < this.retries) {
+      try {
+        await this._throwIfOrchestratorBalanceBelowThreshold();
+        await sendNativeCoin(
+          await refreshSignerNonce(
+            this.signer,
+            'latest',
+            this.logger,
+            nonceSuggestion
+          ),
+          address,
+          this.params.fundAllocationPerAccountBASE,
+          waitForTxMine == undefined ? this.params.waitForTxMine : waitForTxMine
+        );
+        return true;
+      } catch (e: any) {
+        err = e;
+        const errStr = JSON.stringify(e);
+        if (errStr.includes('nonce')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            'nonce error while funding account. retrying with refreshed nonce'
+          );
+          nonceSuggestion = getExpectedNonce(errStr);
+        } else {
+          break;
+        }
+      }
+      count++;
+      // wait a little before retry
+      await sleep(this.backoff);
+    }
+
+    this.onFailedTx(err);
+    this.logger.error('error funding address ', address);
+    return false;
+  }
+
+  async _deployERC20(): Promise<string> {
+    this.contracts.erc20Contract = await this._deployContract(
+      './contracts/ERC20MinterBurnerDecimals.json',
+      ['test', 'test', 18],
+      'erc20'
+    );
+    return this.contracts.erc20Contract;
+  }
+
+  async registerPair(erc20Contract: string): Promise<boolean> {
+    const registerErc20 = createMsgRegisterERC20(
+      'Register test',
+      'Register test',
+      [erc20Contract]
+    );
+
+    const sender = await getSender(this.wallet, this.params.apiUrl);
+    const proposal: MsgSubmitProposalParams = {
+      content: registerErc20,
+      denom: 'aevmos',
+      amount: '20000000000000000',
+      proposer: sender.accountAddress
+    };
+    const chain = {
+      chainId: this.params.chainId,
+      cosmosChainId: this.params.cosmosChainId
+    };
+
+    const ctx: TxContext = {
+      chain,
+      sender,
+      fee: defaultFees,
+      memo: ''
+    };
+
+    this.logger.info('registering ERC20...');
+    const res = await this._submitProposal(ctx, proposal);
+
+    if (
+      (res.code && res.code !== 0) ||
+      (res.tx_response && res.tx_response.code !== 0)
+    ) {
+      this.logger.error(
+        `could not register token pair: code ${
+          res.code || res.tx_response.code
+        }, message: ${res.message || res.tx_response.raw_log}`
       );
-      return true;
-    } catch (e) {
-      this.onFailedTx(e);
-      this.logger.error('error funding address ', address);
       return false;
     }
+
+    // wait 3s for tx to be processed
+    await sleep(3000);
+    this.signer.setTransactionCount(await this.signer.getTransactionCount());
+
+    const pos = res.tx_response.raw_log.indexOf('proposal_id');
+    const endPos = res.tx_response.raw_log.indexOf('"}', pos);
+    const proposalId: number = res.tx_response.raw_log.substring(
+      pos + 22,
+      endPos
+    );
+    this.logger.info(`created RegisterERC20Proposal with id ${proposalId}`);
+
+    // get updated sender (with updated sequence) and use it on tx context
+    ctx.sender = await getSender(this.wallet, this.params.apiUrl);
+    await this._voteProposal(ctx, proposalId, 1);
+    this.signer.setTransactionCount(await this.signer.getTransactionCount());
+
+    // no need to wait if number of workers is > 5
+    // setting up the workers covers the time for the proposal to pass
+    if (this.params.numberOfWorkers < 5) {
+      this.logger.info('sleeping... wait proposal to pass');
+      await sleep(35000);
+      this.logger.info('awaken');
+    }
+    return true;
+  }
+
+  async _submitProposal(
+    ctx: TxContext,
+    proposal: MsgSubmitProposalParams
+  ): Promise<any> {
+    this.logger.info(`submitting proposal`);
+    return sendCosmosTxWithNonceRefresher(
+      ctx,
+      proposal,
+      createTxMsgSubmitProposal,
+      this.wallet,
+      this.params.apiUrl,
+      this.retries,
+      this.backoff,
+      this.logger,
+      'submitting proposal'
+    );
+  }
+
+  async _voteProposal(
+    ctx: TxContext,
+    proposalId: number,
+    option: number
+  ): Promise<void> {
+    const vote: MsgVoteParams = {
+      proposalId,
+      option
+    };
+
+    this.logger.info(`voting proposal #${proposalId}`);
+    await sendCosmosTxWithNonceRefresher(
+      ctx,
+      vote,
+      createTxMsgVote,
+      this.wallet,
+      this.params.apiUrl,
+      this.retries,
+      this.backoff,
+      this.logger,
+      'voting proposal'
+    );
   }
 
   async _deployGasConsumerContract(): Promise<string> {
-    const metadata = JSON.parse(
-      fs
-        .readFileSync(path.join(process.cwd(), './contracts/GasConsumer.json'))
-        .toString()
+    this.contracts.gasConsumerContract = await this._deployContract(
+      './contracts/GasConsumer.json',
+      [],
+      'gas consumer'
     );
-    const factory = new ContractFactory(
-      metadata.abi,
-      metadata.bytecode,
-      this.signer
+    return this.contracts.gasConsumerContract;
+  }
+
+  async _deployContract(
+    contractPath: string,
+    args: any[],
+    contractType?: string
+  ): Promise<string> {
+    const metadata = JSON.parse(
+      fs.readFileSync(path.join(process.cwd(), contractPath)).toString()
     );
 
-    try {
-      const contract = await factory.deploy();
-      await contract.deployTransaction.wait();
-      this.logger.info('gas consumer contract deployed', {
-        address: contract.address
-      });
-      this.contracts.gasConsumerContract = contract.address;
-      return contract.address;
-    } catch (e) {
-      this.logger.error('error deploying contract. Exiting!', {
-        error: e
-      });
-      throw e;
+    // retry in case of invalid nonce
+    let count = 0;
+    let err: Error | undefined;
+    let nonceSuggestion: number | undefined;
+    while (count < this.retries) {
+      const factory = new ContractFactory(
+        metadata.abi,
+        metadata.bytecode,
+        await refreshSignerNonce(
+          this.signer,
+          'latest',
+          this.logger,
+          nonceSuggestion
+        )
+      );
+
+      try {
+        const contract = await factory.deploy(...args);
+        await contract.deployTransaction.wait(1);
+        this.logger.info(`${contractType} contract deployed`, {
+          address: contract.address
+        });
+        return contract.address;
+      } catch (e: any) {
+        err = e;
+        const errStr = JSON.stringify(e);
+        if (errStr.includes('nonce')) {
+          // in case it is invalid nonce, retry with the refreshed signer
+          this.logger.debug(
+            `nonce error while deploying ${contractType} contract. retrying with refreshed nonce`
+          );
+          nonceSuggestion = getExpectedNonce(errStr);
+        } else {
+          break;
+        }
+      }
+      count++;
+      // wait a little before retry
+      await sleep(this.backoff);
     }
+    this.logger.error('error deploying contract. Exiting!', {
+      error: err
+    });
+    throw err;
   }
 
   async _throwIfOrchestratorBalanceBelowThreshold(): Promise<void> {
@@ -233,5 +486,152 @@ export class Orchestrator {
     ) {
       throw new Error('Insufficient funds in orchestrator account');
     }
+  }
+
+  createBankWorker(workerWallet: Wallet, params: any): IWorker {
+    if (!('receiver' in params)) {
+      params['receiver'] = 'evmos1pmk2r32ssqwps42y3c9d4clqlca403yd9wymgr';
+    }
+    const worker = new BankWorker(
+      {
+        account: {
+          privateKey: workerWallet.privateKey,
+          address: workerWallet.address
+        },
+        provider: this.provider,
+        successfulTxCounter: this.successfulTxCounter,
+        failedTxCounter: this.failedTxCounter,
+        onInsufficientFunds: async () => {
+          this.toFundQueue.push(worker);
+        },
+        successfulTxFeeGauge: this.successfulTxFeeGauge,
+        logger: this.logger,
+        apiUrl: this.params.apiUrl,
+        chainId: this.params.chainId,
+        cosmosChainId: this.params.cosmosChainId,
+        receiverAddress: params['receiver']
+      },
+      params
+    );
+    return worker;
+  }
+
+  createEthSenderWorker(workerWallet: Wallet, params: any): IWorker {
+    if (!('receiver' in params)) {
+      params['receiver'] = '0x0Eeca1c550801c1855448E0adAE3e0FE3b57c48D';
+    }
+    const worker = new EthSenderWorker({
+      account: {
+        privateKey: workerWallet.privateKey,
+        address: workerWallet.address
+      },
+      provider: this.provider,
+      successfulTxCounter: this.successfulTxCounter,
+      failedTxCounter: this.failedTxCounter,
+      onInsufficientFunds: async () => {
+        this.toFundQueue.push(worker);
+      },
+      successfulTxFeeGauge: this.successfulTxFeeGauge,
+      logger: this.logger,
+      receiverAddress: params['receiver']
+    });
+    return worker;
+  }
+
+  async createGasConsumerWorker(
+    workerWallet: Wallet,
+    _: any
+  ): Promise<IWorker> {
+    const worker = new GasConsumerWorker({
+      account: {
+        privateKey: workerWallet.privateKey,
+        address: workerWallet.address
+      },
+      provider: this.provider,
+      contractAddress:
+        this.contracts.gasConsumerContract ||
+        (await this._deployGasConsumerContract()),
+      gasToConsumePerTX: this.params.gasToConsumePerTx,
+      successfulTxCounter: this.successfulTxCounter,
+      failedTxCounter: this.failedTxCounter,
+      onInsufficientFunds: async () => {
+        this.toFundQueue.push(worker);
+      },
+      successfulTxFeeGauge: this.successfulTxFeeGauge,
+      logger: this.logger
+    });
+    return worker;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createDelegateWorker(workerWallet: Wallet, params: any): [IWorker, boolean] {
+    let valid = true;
+    // cant delegate to a default value, since validators change
+    if (!('validator' in params)) {
+      if (this.validators && this.validators.length) {
+        params['validator'] = this.validators;
+      } else {
+        valid = false;
+      }
+    }
+    const worker = new DelegateWorker(
+      {
+        account: {
+          privateKey: workerWallet.privateKey,
+          address: workerWallet.address
+        },
+        provider: this.provider,
+        successfulTxCounter: this.successfulTxCounter,
+        failedTxCounter: this.failedTxCounter,
+        onInsufficientFunds: async () => {
+          this.toFundQueue.push(worker);
+        },
+        successfulTxFeeGauge: this.successfulTxFeeGauge,
+        logger: this.logger,
+        apiUrl: this.params.apiUrl,
+        chainId: this.params.chainId,
+        cosmosChainId: this.params.cosmosChainId,
+        receiverAddress: params['validator']
+      },
+      params
+    );
+    return [worker, valid];
+  }
+
+  async createErc20ConverterWorker(
+    workerWallet: Wallet,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extraParams: any
+  ): Promise<IWorker> {
+    let contractAddress = this.contracts.erc20Contract;
+    // if ERC20 not deployed already, deploy and register the pair
+    if (!contractAddress) {
+      contractAddress = await this._deployERC20();
+      await this.registerPair(contractAddress);
+    }
+    const worker = new ConvertERC20Worker(
+      {
+        account: {
+          privateKey: workerWallet.privateKey,
+          address: workerWallet.address
+        },
+        provider: this.provider,
+        contractAddress,
+        successfulTxCounter: this.successfulTxCounter,
+        failedTxCounter: this.failedTxCounter,
+        onInsufficientFunds: async () => {
+          this.toFundQueue.push(worker);
+        },
+        successfulTxFeeGauge: this.successfulTxFeeGauge,
+        logger: this.logger,
+        apiUrl: this.params.apiUrl,
+        chainId: this.params.chainId,
+        cosmosChainId: this.params.cosmosChainId,
+        receiverAddress: '',
+        deployer: this.signer
+      },
+      extraParams
+    );
+    return worker;
   }
 }
