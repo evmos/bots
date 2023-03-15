@@ -71,7 +71,7 @@ export class Orchestrator {
   private readonly logger: Logger;
   private validators: string[] = [];
   private readonly retries = 10;
-  private readonly backoff = 2000; // retry backoff in millisecs
+  private readonly backoff = 1000; // retry backoff in millisecs
 
   private readonly successfulTxCounter = new Counter({
     name: 'num_success_tx',
@@ -239,7 +239,7 @@ export class Orchestrator {
         }
       }
       // sleep to prevent loop from running synchronously
-      await sleep(3000);
+      await sleep(1000);
     }
   }
 
@@ -361,7 +361,7 @@ export class Orchestrator {
     // setting up the workers covers the time for the proposal to pass
     if (this.params.numberOfWorkers < 5) {
       this.logger.info('sleeping... wait proposal to pass');
-      await sleep(35000);
+      await sleep(30000);
       this.logger.info('awaken');
     }
     return true;

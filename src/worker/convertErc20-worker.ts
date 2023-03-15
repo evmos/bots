@@ -6,7 +6,7 @@ import { converter, defaultFees } from '../common/worker-const.js';
 import { EvmosWorker, EvmosWorkerParams, Tx } from './evmos-worker.js';
 import { Contract, providers } from 'ethers';
 import { NonceManager } from '@ethersproject/experimental';
-import { refreshSignerNonce, sleep } from '../common/tx.js';
+import { refreshSignerNonce } from '../common/tx.js';
 import { getExpectedNonce } from '../common/utils.js';
 
 export interface ERC20ConverterWorkerParams extends EvmosWorkerParams {
@@ -83,8 +83,6 @@ export class ConvertERC20Worker extends EvmosWorker {
         }
       }
       count++;
-      // wait a little to retry tx
-      await sleep(this.backofff);
     }
     await super.action();
   }
