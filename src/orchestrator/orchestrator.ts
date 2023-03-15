@@ -23,8 +23,7 @@ import {
   defaultFees,
   delegate,
   ethSender,
-  gasConsumer,
-  workersToSpan
+  gasConsumer
 } from '../common/worker-const.js';
 import {
   createTxMsgSubmitProposal,
@@ -41,6 +40,7 @@ import { getExpectedNonce } from '../common/utils.js';
 export interface OrchestratorParams {
   orchestratorAccountPrivKey: string;
   numberOfWorkers: number;
+  workerTypes: string[];
   fundAllocationPerAccountBASE: string;
   minFundsOrchestrator: string;
   rpcUrl: string;
@@ -157,9 +157,9 @@ export class Orchestrator {
 
   async _initializeWorkers() {
     this.logger.info(`initializing ${this.params.numberOfWorkers} workers`);
-    const typesCount = workersToSpan.length;
+    const typesCount = this.params.workerTypes.length;
     for (let i = 0; i < this.params.numberOfWorkers; i++) {
-      const workerType = workersToSpan[i % typesCount];
+      const workerType = this.params.workerTypes[i % typesCount];
       await this.addWorker(workerType, {});
     }
   }
