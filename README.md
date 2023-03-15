@@ -47,10 +47,10 @@ Workers are spanned on a round-robin fashion.
 | CHAIN_ID               | unique identifier of the chain that the bot will connect to        | no       | `evmos_9000-1`                                   |
 | ORCH_MIN_FUNDS_BASE    | minimum balance that orchestrator must have. Exit otherwise        | no       | `10000000000000000000`                           |
 | NUMBER_OF_WORKERS      | number of workers (accounts) that will send txs                    | no       | 10                                               |
-| WORKER_TYPES           | types of workers to span                                           | no       | `bank,delegate,gas-consumer,converter,ethSender` |
+| WORKER_TYPES           | types of workers to span                                           | no       | `bank,delegate,gasConsumer,converter,ethSender` |
 | FUNDS_PER_ACCOUNT_BASE | fund amount for workers used initially and on insufficient balance | no       | `1000000000000000000`                            |
 | WAIT_FOR_TX_MINE       | flag to determine whether to wait for tx to mine or not            | no       | false                                            |
-| GAS_CONSUME_PER_TX     | how much gas to use in gas-consumer worker                         | no       | `100000`                                         |
+| GAS_CONSUME_PER_TX     | how much gas to use in `gasConsumer` worker                         | no       | `100000`                                         |
 | LOG_LEVEL              | application logging level                                          | no       | info                                             |
 | SERVER_PORT            | port to run server on. Used to expose metrics                      | no       | 8080                                             |
 

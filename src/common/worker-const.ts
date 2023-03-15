@@ -2,7 +2,7 @@ import { Fee } from 'evmosjs/packages/transactions/dist/messages/common.js';
 
 export const bank = 'bank';
 export const delegate = 'delegate';
-export const gasConsumer = 'gas-consumer';
+export const gasConsumer = 'gasConsumer';
 export const converter = 'converter';
 export const ethSender = 'ethSender';
 export const workersToSpan = [
