@@ -24,6 +24,17 @@ export function stringFromEnvOrDefault(key: string, def: string): string {
   return value;
 }
 
+export function stringArrayFromEnvOrDefault(
+  key: string,
+  def: string[]
+): string[] {
+  const value = process.env[key];
+  if (!value) {
+    return def;
+  }
+  return value.split(',');
+}
+
 export function booleanFromEnvOrDefault(key: string, def: boolean): boolean {
   let value: string | undefined | boolean = process.env[key];
   if (value == undefined) {

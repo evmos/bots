@@ -3,14 +3,17 @@ import {
   booleanFromEnvOrDefault,
   logLevelFromEnvOrDefault,
   numberFromEnvOrDefault,
+  stringArrayFromEnvOrDefault,
   stringFromEnvOrDefault,
   stringFromEnvOrThrow
 } from './common/utils.js';
+import { workersToSpan } from './common/worker-const.js';
 
 export interface BotConfig {
   rpcUrl: string;
   orchestratorAccountPrivateKey: string;
   numberOfWorkers: number;
+  workerTypes: string[];
   fundsPerAccount: string;
   waitForTxToMine: boolean;
   gasToConsumePerTx: string;
@@ -34,6 +37,7 @@ export function getConfig(): BotConfig {
       '10000000000000000000'
     ),
     numberOfWorkers: numberFromEnvOrDefault('NUMBER_OF_WORKERS', 10),
+    workerTypes: stringArrayFromEnvOrDefault('WORKER_TYPES', workersToSpan),
     fundsPerAccount: stringFromEnvOrDefault(
       'FUNDS_PER_ACCOUNT_BASE',
       '1000000000000000000'
