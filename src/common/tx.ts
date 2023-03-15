@@ -13,6 +13,8 @@ import { Logger } from 'winston';
 import { getTransactionDetailsByHash } from '../client/index.js';
 import { getExpectedNonce } from './utils.js';
 
+const TX_NOT_FOUND = 'tx not found';
+
 export async function refreshSignerNonce(
   signer: NonceManager,
   blockTag: 'latest' | 'pending',
@@ -181,4 +183,11 @@ export async function sendCosmosTxWithNonceRefresher(
     count++;
   }
   return res;
+}
+
+export function getFailedTxReason(error: string): string {
+  if (error.includes(TX_NOT_FOUND)) {
+    return TX_NOT_FOUND;
+  }
+  return error.split(':')[0];
 }

@@ -2,7 +2,7 @@ import { providers, Wallet } from 'ethers';
 import { Counter, Gauge } from 'prom-client';
 import { NonceManager } from '@ethersproject/experimental';
 import { Logger } from '../common/logger.js';
-import { refreshSignerNonce } from '../common/tx.js';
+import { getFailedTxReason, refreshSignerNonce } from '../common/tx.js';
 import { Logger as etherLogger } from 'ethers/lib/utils.js';
 import { useTryAsync } from 'no-try';
 
@@ -142,7 +142,7 @@ export abstract class IWorker {
     }
     this.failedTxCounter.inc({
       worker: this.account.address,
-      reason: error.message
+      reason: getFailedTxReason(error.message)
     });
   }
 
