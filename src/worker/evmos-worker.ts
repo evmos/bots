@@ -1,6 +1,6 @@
 import { IWorker, IWorkerParams } from './iworker.js';
 import { Chain } from 'evmosjs/packages/transactions/dist/index.js';
-import { broadcastTxWithRetry, signTransaction, sleep } from '../common/tx.js';
+import { broadcastTxWithRetry, signTransaction } from '../common/tx.js';
 import { getSenderWithRetry } from '../client/index.js';
 import { getExpectedNonce } from '../common/utils.js';
 
@@ -40,7 +40,6 @@ export abstract class EvmosWorker extends IWorker {
   protected readonly chainID: Chain;
   protected readonly apiUrl: string;
   protected readonly retries = 5;
-  protected readonly backofff = 1500; // retrt backoff in millisec
   protected _updateSequence = false;
   protected sequence: number;
   protected sender: any;
@@ -132,9 +131,6 @@ export abstract class EvmosWorker extends IWorker {
       if (!this._isLowOnFunds) {
         await this.action();
       }
-      // delay to prevent failure due to block gas limit
-      // and stuck the main thread
-      await sleep(3000);
     }
   }
 }
