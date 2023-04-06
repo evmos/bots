@@ -116,7 +116,7 @@ export abstract class EvmosWorker extends IWorker {
 
   async onFailedTx(error: any) {
     super.onFailedTx({ code: error.code, message: error.raw_log });
-    if (error.raw_log.includes('account sequence mismatch')) {
+    if (error.raw_log && error.raw_log.includes('account sequence mismatch')) {
       this.logger.debug('invalid nonce (sequence), updated to the expected');
       const expectedSequence = getExpectedNonce(error.raw_log);
       if (expectedSequence) {
