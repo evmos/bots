@@ -128,9 +128,12 @@ export abstract class IWorker {
         });
         // for some reason our nonce expired cases are not being categorized
         // by ethers library as so
-        if (errorMessage.includes('nonce')) {
+        if (errorMessage && errorMessage.includes('nonce')) {
           await this.refreshSignerNonce('latest');
-        } else if (errorMessage.includes('tx already in mempool')) {
+        } else if (
+          errorMessage &&
+          errorMessage.includes('tx already in mempool')
+        ) {
           await this.refreshSignerNonce('pending');
         }
         break;

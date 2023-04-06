@@ -111,7 +111,7 @@ export class Orchestrator {
       } else if (error.code == 'SERVER_ERROR') {
         try {
           errorString = JSON.parse(error.body)['error']['message'];
-          if (errorString.includes('nonce')) {
+          if (errorString && errorString.includes('nonce')) {
             errorString = 'INVALID_NONCE';
           }
         } catch (e) {
@@ -140,7 +140,6 @@ export class Orchestrator {
     this.logger.info('initializing orchestrator');
     this.validators = await getValidatorsAddresses(this.params.apiUrl);
     await this._throwIfOrchestratorBalanceBelowThreshold();
-    await this._initializeContracts();
     await this._initializeWorkers();
     this._startWorkers();
     this._initializeRefunder();
@@ -158,6 +157,16 @@ export class Orchestrator {
   async _initializeWorkers() {
     this.logger.info(`initializing ${this.params.numberOfWorkers} workers`);
     const typesCount = this.params.workerTypes.length;
+
+    if (this.params.workerTypes.includes(gasConsumer)) {
+      await this._deployGasConsumerContract();
+    }
+
+    if (this.params.workerTypes.includes(converter)) {
+      const contractAddress = await this._deployERC20();
+      await this.registerPair(contractAddress);
+    }
+
     for (let i = 0; i < this.params.numberOfWorkers; i++) {
       const workerType = this.params.workerTypes[i % typesCount];
       await this.addWorker(workerType, {});
@@ -218,13 +227,6 @@ export class Orchestrator {
     }
   }
 
-  async _initializeContracts() {
-    this.logger.info('initializing contracts');
-    await this._deployGasConsumerContract();
-    const contractAddress = await this._deployERC20();
-    await this.registerPair(contractAddress);
-  }
-
   async _initializeRefunder() {
     this.logger.info('initializing refunder');
     while (!this.isStopped) {
@@ -270,7 +272,7 @@ export class Orchestrator {
       } catch (e: any) {
         err = e;
         const errStr = JSON.stringify(e);
-        if (errStr.includes('nonce')) {
+        if (errStr && errStr.includes('nonce')) {
           // in case it is invalid nonce, retry with the refreshed signer
           this.logger.debug(
             'nonce error while funding account. retrying with refreshed nonce'
@@ -453,7 +455,7 @@ export class Orchestrator {
       } catch (e: any) {
         err = e;
         const errStr = JSON.stringify(e);
-        if (errStr.includes('nonce')) {
+        if (errStr && errStr.includes('nonce')) {
           // in case it is invalid nonce, retry with the refreshed signer
           this.logger.debug(
             `nonce error while deploying ${contractType} contract. retrying with refreshed nonce`

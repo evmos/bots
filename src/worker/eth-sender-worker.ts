@@ -66,9 +66,9 @@ export class EthSenderWorker extends IWorker {
   async onFailedTx(error: any) {
     super.onFailedTx(error);
     const errorMessage = JSON.parse(error.body)['error']['message'];
-    if (errorMessage.includes('nonce')) {
+    if (errorMessage && errorMessage.includes('nonce')) {
       this.nonce = await this.wallet.getTransactionCount('latest');
-    } else if (errorMessage.includes('insufficient fee')) {
+    } else if (errorMessage && errorMessage.includes('insufficient fee')) {
       this.gasPrice = await this.wallet.getGasPrice();
     }
   }

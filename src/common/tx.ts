@@ -166,7 +166,7 @@ export async function sendCosmosTxWithNonceRefresher(
       break;
     } else {
       const errMsg = res.message || res.tx_response.raw_log;
-      if (errMsg.includes('sequence mismatch')) {
+      if (errMsg && errMsg.includes('sequence mismatch')) {
         // in case it is invalid nonce, retry with the refreshed signer
         logger?.debug(
           `nonce error while ${
@@ -185,9 +185,9 @@ export async function sendCosmosTxWithNonceRefresher(
   return res;
 }
 
-export function getFailedTxReason(error: string): string {
-  if (error.includes(TX_NOT_FOUND)) {
+export function getFailedTxReason(error: string | undefined): string {
+  if (error?.includes(TX_NOT_FOUND)) {
     return TX_NOT_FOUND;
   }
-  return error.split(':')[0];
+  return error?.split(':')[0] || '';
 }
