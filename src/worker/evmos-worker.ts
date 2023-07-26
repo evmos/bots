@@ -107,7 +107,14 @@ export abstract class EvmosWorker extends IWorker {
       ) {
         this.onFailedTx(txResponse.tx_response);
       } else {
-        this.onFailedTx({ code: txResponse.code, raw_log: txResponse.message });
+        this.onFailedTx({
+          code: txResponse.code || 'UNKNOWN',
+          raw_log:
+            txResponse.message ||
+            `code: ${
+              txResponse.code || 'UNKNOWN'
+            }; error undefined (no message on txResponse object)`
+        });
       }
     } catch (e: unknown) {
       this.onFailedTx(e);
@@ -115,7 +122,12 @@ export abstract class EvmosWorker extends IWorker {
   }
 
   async onFailedTx(error: any) {
-    super.onFailedTx({ code: error.code, message: error.raw_log });
+    super.onFailedTx({
+      code: error.code || 'UNKNOWN',
+      message:
+        error.raw_log ||
+        `code: ${error.code}; error undefined (no raw_log on error object)`
+    });
     if (error.raw_log && error.raw_log.includes('account sequence mismatch')) {
       this.logger.debug('invalid nonce (sequence), updated to the expected');
       const expectedSequence = getExpectedNonce(error.raw_log);
