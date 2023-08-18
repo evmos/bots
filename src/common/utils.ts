@@ -1,4 +1,5 @@
 import { LogLevel } from './logger.js';
+import { providers } from 'ethers';
 
 export function stringFromEnvOrThrow(key: string): string {
   const value = process.env[key];
@@ -69,4 +70,27 @@ export function getExpectedNonce(error: string): number | undefined {
     return parseInt(expectedNonce);
   }
   return;
+}
+
+export async function waitForNextBlock(
+  provider: providers.JsonRpcProvider
+): Promise<void> {
+  const currentBlockNumber = await provider.getBlockNumber();
+  return waitForBlock(provider, currentBlockNumber + 1);
+}
+
+async function waitForBlock(
+  provider: providers.JsonRpcProvider,
+  blockNumber: number
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const listener = async (newBlockNumber: number) => {
+      if (newBlockNumber >= blockNumber) {
+        provider.off('block', listener);
+        resolve();
+      }
+    };
+
+    provider.on('block', listener);
+  });
 }

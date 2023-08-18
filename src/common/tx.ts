@@ -11,7 +11,7 @@ import { arrayify, concat, splitSignature } from 'ethers/lib/utils.js';
 import { useTryAsync } from 'no-try';
 import { Logger } from 'winston';
 import { getTransactionDetailsByHash } from '../client/index.js';
-import { getExpectedNonce } from './utils.js';
+import { getExpectedNonce, waitForNextBlock } from './utils.js';
 
 const TX_NOT_FOUND = 'tx not found';
 
@@ -83,7 +83,7 @@ export function sleep(ms: number) {
 export async function signTransaction(
   wallet: Wallet,
   tx: TxPayload,
-  broadcastMode = 'BROADCAST_MODE_BLOCK'
+  broadcastMode = 'BROADCAST_MODE_SYNC' // block broadcast mode is deprecated in cosmos-sdk v0.47
 ) {
   const dataToSign = `0x${Buffer.from(
     tx.signDirect.signBytes,
@@ -108,6 +108,7 @@ export async function signTransaction(
 }
 
 export async function broadcastTxWithRetry(
+  provider: providers.JsonRpcProvider,
   signedTx: string,
   apiUrl: string,
   retries: number,
@@ -119,14 +120,13 @@ export async function broadcastTxWithRetry(
     res = await broadcast(signedTx, apiUrl);
     // check response. If got error, retry
     if (res.tx_response && res.tx_response.txhash) {
+      // wait for the tx to be processed
+      await waitForNextBlock(provider);
       // sometimes the tx goes thru but returns code != 0 and without logs
-      // for this case, we get the transactions details
-      if (res.tx_response.code !== 0 && !res.tx_response.raw_log) {
-        // wait 2 secs before getting tx data
-        await sleep(2000);
-        // query for the tx to get the logs
-        res = await getTransactionDetailsByHash(apiUrl, res.tx_response.txhash);
-      }
+      // also, using broadcast async mode (block deprecated on sdk v0.47), we need to get the transactions details
+      // by querying for the tx to get the logs
+      res = await getTransactionDetailsByHash(apiUrl, res.tx_response.txhash);
+      // }
       break;
     }
     logger?.debug(
@@ -140,6 +140,7 @@ export async function broadcastTxWithRetry(
 
 export async function sendCosmosTxWithNonceRefresher(
   ctx: TxContext,
+  provider: providers.JsonRpcProvider,
   msgParams: any,
   createMsg: (ctx: TxContext, msg: any) => TxPayload,
   wallet: Wallet,
@@ -158,7 +159,7 @@ export async function sendCosmosTxWithNonceRefresher(
     }
     const msg = createMsg(ctx, msgParams);
     const signed = await signTransaction(wallet, msg);
-    res = await broadcastTxWithRetry(signed, apiUrl, retries, logger);
+    res = await broadcastTxWithRetry(provider, signed, apiUrl, retries, logger);
 
     const code = res.code || res.tx_response.code;
     if (code == 0) {
