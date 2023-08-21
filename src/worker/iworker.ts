@@ -13,7 +13,7 @@ export interface Account {
 
 export interface IWorkerParams {
   account: Account;
-  provider: providers.Provider;
+  provider: providers.JsonRpcProvider;
   successfulTxCounter: Counter<string>;
   failedTxCounter: Counter<string>;
   successfulTxFeeGauge: Gauge<string>;

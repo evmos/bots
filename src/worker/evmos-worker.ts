@@ -3,6 +3,7 @@ import { Chain } from 'evmosjs/packages/transactions/dist/index.js';
 import { broadcastTxWithRetry, signTransaction } from '../common/tx.js';
 import { getSenderWithRetry } from '../client/index.js';
 import { getExpectedNonce } from '../common/utils.js';
+import { providers } from 'ethers';
 
 export interface Tx {
   signDirect: {
@@ -37,6 +38,7 @@ export interface EvmosWorkerParams extends IWorkerParams {
 }
 
 export abstract class EvmosWorker extends IWorker {
+  protected readonly provider: providers.JsonRpcProvider;
   protected readonly chainID: Chain;
   protected readonly apiUrl: string;
   protected readonly retries = 5;
@@ -53,6 +55,7 @@ export abstract class EvmosWorker extends IWorker {
       logger: params.logger,
       successfulTxFeeGauge: params.successfulTxFeeGauge
     });
+    this.provider = params.provider;
     this.apiUrl = params.apiUrl;
     this.chainID = {
       chainId: params.chainId,
@@ -65,7 +68,13 @@ export abstract class EvmosWorker extends IWorker {
   async sendTransaction(): Promise<any> {
     const txSimple = await this.prepareMessage();
     const res = await signTransaction(this.wallet, txSimple as any);
-    return broadcastTxWithRetry(res, this.apiUrl, this.retries, this.logger);
+    return broadcastTxWithRetry(
+      this.provider,
+      res,
+      this.apiUrl,
+      this.retries,
+      this.logger
+    );
   }
 
   async onSuccessfulTx(receipt: any) {

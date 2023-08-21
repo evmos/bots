@@ -60,7 +60,7 @@ export interface Contracts {
 export class Orchestrator {
   private readonly params: OrchestratorParams;
   private workers: IWorker[] = [];
-  private provider: providers.Provider;
+  private provider: providers.JsonRpcProvider;
   private readonly signer: NonceManager;
   private wallet: Wallet;
   private checkBalanceInterval?: NodeJS.Timer;
@@ -288,7 +288,7 @@ export class Orchestrator {
     }
 
     this.onFailedTx(err);
-    this.logger.error('error funding address ', address);
+    this.logger.error(`error funding address ${address}`);
     return false;
   }
 
@@ -376,6 +376,7 @@ export class Orchestrator {
     this.logger.info(`submitting proposal`);
     return sendCosmosTxWithNonceRefresher(
       ctx,
+      this.provider,
       proposal,
       createTxMsgSubmitProposal,
       this.wallet,
@@ -400,6 +401,7 @@ export class Orchestrator {
     this.logger.info(`voting proposal #${proposalId}`);
     await sendCosmosTxWithNonceRefresher(
       ctx,
+      this.provider,
       vote,
       createTxMsgVote,
       this.wallet,
